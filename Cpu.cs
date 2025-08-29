@@ -134,28 +134,20 @@ namespace GB {
        C - Set if carry from bit 7.
        */
     void proc_ADD_A_r8(byte r8) {
-        int a = A;
-        a += r8;
-        A = (byte)a;
-        setFlag(FLAG.Z, A == 0);
-        setFlag(FLAG.N, false);
-        // a : 0x12
-        // 0001 0010 & 0000 1111 = 0000 1111
-        // b: 0xFF -> 0XFF & 0xFF == 0000 1111 
-        // 0000 1111 + 0000 1111 == 0001 1110 (1E) -> 1E > 0F
-        setFlag(FLAG.H, ((a & 0x0F) + (r8 & 0x0F) > 0x0F));
-        setFlag(FLAG.C, A > 0xFF);
+        // the original A has to be used for calculating the flags
+        int a0 = A, r = a0 + r8;
+        setFlag(FLAG.H, ((a0 & 0x0F) + (r8 & 0x0F)) > 0x0F);
+        setFlag(FLAG.C, r > 0xFF);
+        A = (byte)r;
+        setFlag(FLAG.Z, A == 0); setFlag(FLAG.N, false);
     }
 
     void proc_ADC_A_r8(byte r8) {
-        int a = A;
-        int r8c = r8 + (int)(isFlagSet(FLAG.C) ? 1 : 0);
-        a += r8c;
-        A = (byte)a;
-        setFlag(FLAG.Z, A == 0);
-        setFlag(FLAG.N, false);
-        setFlag(FLAG.H, ((a & 0x0F) + (r8c & 0x0F) > 0x0F));
-        setFlag(FLAG.C, A > 0xFF);
+       int a0 = A, c = isFlagSet(FLAG.C) ? 1 : 0, r = a0 + r8 + c;
+       setFlag(FLAG.H, ((a0 & 0x0F) + (r8 & 0x0F) + c) > 0x0F);
+       setFlag(FLAG.C, r > 0xFF);
+       A = (byte)r;
+       setFlag(FLAG.Z, A == 0); setFlag(FLAG.N, false);
     }
     /*
        Flags affected:
@@ -177,34 +169,30 @@ namespace GB {
     }
 
     void proc_SUB_A_r8(byte r8) {
-        int a = A;
-        int tempRes = a -= r8;
-        setFlag(FLAG.Z, tempRes == 0);
-        setFlag(FLAG.N, true);
-        setFlag(FLAG.H, ((a & 0x0F) < (r8 & 0x0F)));
-        setFlag(FLAG.C, tempRes < 0);
-        A = (byte) tempRes;
+       int a0 = A, r = a0 - r8;
+       setFlag(FLAG.H, (a0 & 0x0F) < (r8 & 0x0F));
+       setFlag(FLAG.C, r < 0);
+       A = (byte) r;
+       setFlag(FLAG.Z, A == 0);
+       setFlag(FLAG.N, true);
     }
 
     void proc_CP_A_r8(byte r8) {
-        int a = A;
-        int tempRes = a -= r8;
-        setFlag(FLAG.Z, tempRes == 0);
-        setFlag(FLAG.N, true);
-        setFlag(FLAG.H, ((a & 0x0F) < (r8 & 0x0F)));
-        setFlag(FLAG.C, tempRes < 0);
+       int a0 = A, r = a0 - r8;
+       setFlag(FLAG.H, (a0 & 0x0F) < (r8 & 0x0F));
+       setFlag(FLAG.C, r < 0);
+       setFlag(FLAG.Z, r == 0);
+       setFlag(FLAG.N, true);
     }
 
 
     void proc_SBC_A_r8(byte r8) {
-      int a = A;
-      int intFlagC = isFlagSet(FLAG.C) ? 1 : 0;
-      int tempRes = a -= (int)(r8 + intFlagC);
-      setFlag(FLAG.Z, tempRes == 0);
+      int a0 = A, c = isFlagSet(FLAG.C) ? 1 : 0, r = a0 - r8 - c;
+      setFlag(FLAG.H, (a0 & 0x0F) < (r8 & 0x0F));
+      setFlag(FLAG.C, r < 0);
+      A = (byte)r;
+      setFlag(FLAG.Z, A == 0);
       setFlag(FLAG.N, true);
-      setFlag(FLAG.H, ((a & 0x0F) < (r8 & 0x0F)));
-      setFlag(FLAG.C, (r8 + intFlagC) > a);
-      A = (byte) tempRes;
     }
 
     void proc_AND_A_r8(byte r8) {
@@ -264,7 +252,7 @@ namespace GB {
     }
 
     void proc_JR_COND(bool cond) {
-      sbyte n = (sbyte)bus.Read(PC);
+      sbyte n = (sbyte)bus.Read(PC++);
       if (cond) {
         PC = (ushort)(PC + n);
       }
