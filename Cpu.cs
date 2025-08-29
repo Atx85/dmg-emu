@@ -484,7 +484,7 @@ namespace GB {
                                            return 8;
                 /*CPL*/   case 0x2F: setFlag(FLAG.N, true); setFlag(FLAG.H, true); PC++;  return 4;
                 /*JR NC e8*/    case 0x30: proc_JR_COND(!isFlagSet(FLAG.C));  return 12;
-                /*LD SP, n16 */    case 0x31:  ushortToBytes(fetchImm16(), ref H, ref L); 
+                /*LD SP, n16 */    case 0x31:  SP = fetchImm16(); 
                                                PC += 1;
                                                return 12;
                 /*LD [HL-] A*/    case 0x32: bus.Write(r8sToUshort(H, L), A);
@@ -589,16 +589,16 @@ namespace GB {
                 /*LD*/    case 0x6E: L = bus.Read(r8sToUshort(H, L)); PC++; return 8;
                 /*LD*/    case 0x6F: L = A; PC++; return 4;
 
-                /*LD*/    case 0x70: bus.Write(bus.Read(r8sToUshort(H, L)), B); PC++;  return 4;
-                /*LD*/    case 0x71: bus.Write(bus.Read(r8sToUshort(H, L)), C); PC++; return 4;
-                /*LD*/    case 0x72: bus.Write(bus.Read(r8sToUshort(H, L)), D); PC++; return 4;
-                /*LD*/    case 0x73: bus.Write(bus.Read(r8sToUshort(H, L)), E); PC++; return 4;
-                /*LD*/    case 0x74: bus.Write(bus.Read(r8sToUshort(H, L)), H); PC++; return 4;
-                /*LD*/    case 0x75: bus.Write(bus.Read(r8sToUshort(H, L)), L); PC++; return 4;
+                /*LD*/    case 0x70: bus.Write(r8sToUshort(H, L), B); PC++;  return 4;
+                /*LD*/    case 0x71: bus.Write(r8sToUshort(H, L), C); PC++; return 4;
+                /*LD*/    case 0x72: bus.Write(r8sToUshort(H, L), D); PC++; return 4;
+                /*LD*/    case 0x73: bus.Write(r8sToUshort(H, L), E); PC++; return 4;
+                /*LD*/    case 0x74: bus.Write(r8sToUshort(H, L), H); PC++; return 4;
+                /*LD*/    case 0x75: bus.Write(r8sToUshort(H, L), L); PC++; return 4;
                 /*LD HALT*/    case 0x76: isHalted = true; 
                                      PC++;
                                      return 8;
-                /*LD*/    case 0x77: bus.Write(bus.Read(r8sToUshort(H, L)), A); PC++; return 4;
+                /*LD*/    case 0x77: bus.Write(r8sToUshort(H, L), A); PC++; return 4;
                 /*LD*/    case 0x78: A = B; PC++; return 4;
                 /*LD*/    case 0x79: A = C; PC++; return 4;
                 /*LD*/    case 0x7A: A = D; PC++; return 4;
@@ -674,9 +674,7 @@ namespace GB {
                 /*AND*/   case 0xA4: proc_AND_A_r8(H); PC++;return 4;
                 /*AND*/   case 0xA5: proc_AND_A_r8(L); PC++;return 4;
                 /*AND*/   case 0xA6: {
-                                       byte hl = busReadHL();
-                                       proc_AND_A_r8(B); 
-                                       ushortToBytes(hl, ref H, ref L);
+                                       proc_AND_A_r8(busReadHL()); 
                                        PC++;
                                        return 8;
                                      }
