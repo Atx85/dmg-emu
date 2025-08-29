@@ -251,11 +251,12 @@ namespace GB {
       if (cond) PC = addr;
     }
 
-    void proc_JR_COND(bool cond) {
+    bool proc_JR_COND(bool cond) {
       sbyte n = (sbyte)bus.Read(PC++);
       if (cond) {
         PC = (ushort)(PC + n);
       }
+      return cond;
     }
 
     void proc_RET_COND(bool cond) {
@@ -457,7 +458,7 @@ namespace GB {
                                            PC++;  
                                            return 8;
                 /*RRA*/   case 0x1F: proc_RR_r8(ref A); PC++;  return 4;
-                /*JR NZ e8*/    case 0x20: proc_JR_COND(!isFlagSet(FLAG.Z)); return 12;
+                /*JR NZ e8*/    case 0x20: {bool t = proc_JR_COND(!isFlagSet(FLAG.Z)); return t ? 12 : 8; };
                 /*LD HL n16*/    case 0x21: ushortToBytes(fetchImm16(), ref H, ref L);   
                                             PC++;
                                             return 12;
@@ -475,7 +476,7 @@ namespace GB {
                                           PC++; 
                                           return 8;
                 /*DAA*/   case 0x27: proc_DAA(); PC++;  return 4;
-                /*JR Z e8*/    case 0x28: proc_JR_COND(isFlagSet(FLAG.Z)); return 12;
+                /*JR Z e8*/    case 0x28: { bool t = proc_JR_COND(isFlagSet(FLAG.Z));  return t ? 12 : 8; }
                 /*ADD HL HL*/   case 0x29: proc_ADD_HL_r16(r8sToUshort(H, L)); PC++; return 8;
                 /*LD A, [HL+] */    case 0x2A:  A = bus.Read(r8sToUshort(H, L)); 
                                                 incR8sAsUshort(ref H,ref L);
@@ -491,7 +492,7 @@ namespace GB {
                                            PC++; 
                                            return 8;
                 /*CPL*/   case 0x2F: setFlag(FLAG.N, true); setFlag(FLAG.H, true); PC++;  return 4;
-                /*JR NC e8*/    case 0x30: proc_JR_COND(!isFlagSet(FLAG.C));  return 12;
+                /*JR NC e8*/    case 0x30: { bool t = proc_JR_COND(!isFlagSet(FLAG.C));   return t ? 12 : 8; }
                 /*LD SP, n16 */    case 0x31:  SP = fetchImm16(); 
                                                PC += 1;
                                                return 12;
@@ -524,7 +525,7 @@ namespace GB {
                                               PC++;
                                               return 12;
                 /*SCF*/   case 0x37: setFlag(FLAG.N, false); setFlag(FLAG.H, false); setFlag(FLAG.C, true); PC++; return 4;
-                /*JR C*/    case 0x38: proc_JR_COND(isFlagSet(FLAG.C));  return 12;
+                /*JR C*/    case 0x38: { bool t = proc_JR_COND(isFlagSet(FLAG.C));  return t ? 12 : 8; }
                 /*ADD*/   case 0x39: proc_ADD_HL_r16(SP); PC++; return 8;
                 /*LD A, [HL-] */    case 0x3A:  A = bus.Read(r8sToUshort(H, L)); 
                                                 decR8sAsUshort(ref H,ref L);
