@@ -188,7 +188,7 @@ namespace GB {
 
     void proc_SBC_A_r8(byte r8) {
       int a0 = A, c = isFlagSet(FLAG.C) ? 1 : 0, r = a0 - r8 - c;
-      setFlag(FLAG.H, (a0 & 0x0F) < (r8 + c));
+      setFlag(FLAG.H, (a0 & 0x0F) < ((r8 & 0x0F) + c));
       setFlag(FLAG.C, a0 < r8 + c);
       A = (byte)r;
       setFlag(FLAG.Z, A == 0);
@@ -543,7 +543,7 @@ namespace GB {
                                      return 8;
                 /*LD*/    case 0x47: B = A; PC++; return 4;
                 /*LD*/    case 0x48: C = B; PC++; return 4;
-                /*LD C, C*/    case 0x49:  return 4;
+                /*LD C, C*/    case 0x49: C = C; PC++;  return 4;
                 /*LD*/    case 0x4A: C = D; PC++; return 4;
                 /*LD*/    case 0x4B: C = E; PC++; return 4;
                 /*LD*/    case 0x4C: C = H; PC++; return 4;
@@ -562,7 +562,7 @@ namespace GB {
                                      return 8;
                 /*LD*/    case 0x57: D = A; PC++; return 4;
                 /*LD*/    case 0x58: E = B; PC++; return 4;
-                /*LD*/    case 0x59:  return 4;
+                /*LD*/    case 0x59: E = C; PC++;  return 4;
                 /*LD*/    case 0x5A: E = D; PC++; return 4;
                 /*LD E,E */    case 0x5B: PC++; return 4;
                 /*LD*/    case 0x5C: E = H; PC++; return 4;
@@ -581,7 +581,7 @@ namespace GB {
                                      return 8;
                 /*LD*/    case 0x67: H = A; PC++; return 4;
                 /*LD*/    case 0x68: L = B; PC++; return 4;
-                /*LD*/    case 0x69: L = C; return 4;
+                /*LD*/    case 0x69: L = C; PC++; return 4;
                 /*LD*/    case 0x6A: L = D; PC++; return 4;
                 /*LD*/    case 0x6B: L = E; PC++; return 4;
                 /*LD*/    case 0x6C: L = H; PC++; return 4;
@@ -589,16 +589,16 @@ namespace GB {
                 /*LD*/    case 0x6E: L = bus.Read(r8sToUshort(H, L)); PC++; return 8;
                 /*LD*/    case 0x6F: L = A; PC++; return 4;
 
-                /*LD*/    case 0x70: bus.Write(r8sToUshort(H, L), B); PC++;  return 4;
-                /*LD*/    case 0x71: bus.Write(r8sToUshort(H, L), C); PC++; return 4;
-                /*LD*/    case 0x72: bus.Write(r8sToUshort(H, L), D); PC++; return 4;
-                /*LD*/    case 0x73: bus.Write(r8sToUshort(H, L), E); PC++; return 4;
-                /*LD*/    case 0x74: bus.Write(r8sToUshort(H, L), H); PC++; return 4;
-                /*LD*/    case 0x75: bus.Write(r8sToUshort(H, L), L); PC++; return 4;
+                /*LD*/    case 0x70: bus.Write(r8sToUshort(H, L), B); PC++; return 8;
+                /*LD*/    case 0x71: bus.Write(r8sToUshort(H, L), C); PC++; return 8;
+                /*LD*/    case 0x72: bus.Write(r8sToUshort(H, L), D); PC++; return 8;
+                /*LD*/    case 0x73: bus.Write(r8sToUshort(H, L), E); PC++; return 8;
+                /*LD*/    case 0x74: bus.Write(r8sToUshort(H, L), H); PC++; return 8;
+                /*LD*/    case 0x75: bus.Write(r8sToUshort(H, L), L); PC++; return 8;
                 /*LD HALT*/    case 0x76: isHalted = true; 
                                      PC++;
                                      return 8;
-                /*LD*/    case 0x77: bus.Write(r8sToUshort(H, L), A); PC++; return 4;
+                /*LD*/    case 0x77: bus.Write(r8sToUshort(H, L), A); PC++; return 8;
                 /*LD*/    case 0x78: A = B; PC++; return 4;
                 /*LD*/    case 0x79: A = C; PC++; return 4;
                 /*LD*/    case 0x7A: A = D; PC++; return 4;
@@ -723,9 +723,24 @@ namespace GB {
                                      }
                 /*CP*/    case 0xBF: proc_CP_A_r8(A); PC++; return 4;
 
-                /*RET NZ*/   case 0xC0: proc_RET_COND(!isFlagSet(FLAG.Z));  return 20;
+                /*RET NZ*/   case 0xC0: {
+                                          bool t = !isFlagSet(FLAG.Z);
+                                          if (t) {
+                                            byte h = 0, l = 0;
+                                            proc_POP_r16(ref h, ref l);
+                                            PC = r8sToUshort(h, l);
+                                          } else {
+                                            PC++;
+                                          }
+                                          return t ? 20 : 8;
+                                        }
                 /*POP*/   case 0xC1: proc_POP_r16(ref B, ref C); PC++; return 12;
-                /*JP NZ a16 */    case 0xC2: proc_JP_COND_ADDR(!(isFlagSet(FLAG.Z)), fetchImm16()); return 16;
+                /*JP NZ a16 */    case 0xC2: {
+                                               ushort a = fetchImm16();
+                                               bool t = !isFlagSet(FLAG.Z);
+                                               if (t) PC = a; else PC++;
+                                               return t ? 16 : 12;
+                                             }
                 /*JP A16*/    case 0xC3: PC = fetchImm16(); // no PC++ after JP!! 
                                          return 16;
                 /*CALL NZ*/  case 0xC4: proc_CALL_COND_n16(!isFlagSet(FLAG.Z), fetchImm16());  return 24;
@@ -746,7 +761,7 @@ namespace GB {
                 /*ILLEGAL_D3*/case 0xD3:  return 4;
                 /*CALL NC*/  case 0xD4: proc_CALL_COND_n16(!isFlagSet(FLAG.C), fetchImm16());  return 24;
                 /*PUSH*/  case 0xD5: proc_PUSH_r16(D, E); PC++; return 16;
-                /*SUB A n8 */   case 0xD6: proc_SUB_A_r8(bus.Read(PC)); PC++; return 8;
+                /*SUB A n8 */   case 0xD6: PC++; proc_SUB_A_r8(bus.Read(PC)); PC++; return 8;
                 /*RST 10*/   case 0xD7: proc_RST(0x0010);  return 16;
                 /*RET C*/   case 0xD8: proc_RET_COND(isFlagSet(FLAG.C));  return 20;
                 /*RETI*/  case 0xD9: IME = true; proc_RET_COND(true); return 16;
@@ -796,6 +811,7 @@ namespace GB {
                 /*POP*/   case 0xF1: proc_POP_r16(ref A, ref F); F &= 0xF0; /* bits 3-0 are always zero) */ PC++; return 12;
                 /*LDH A, [FF00 + C]*/   case 0xF2: {
                                                      A = bus.Read((ushort)(0xFF00 + C));
+                                                     PC++;
                                                      return 8;
                                                    }
                 /*DI*/    case 0xF3: IME = false; 
