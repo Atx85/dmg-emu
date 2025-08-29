@@ -352,12 +352,12 @@ namespace GB {
       // 16-bit result with wrap
       ushort r = (ushort)(sp + e);
       H = (byte)(r >> 8);
-      L = (byte)r:
+      L = (byte)r;
 
       bool h = ((sp & 0x0F) + ((byte)e & 0X0F)) > 0X0F;
-      bool c = ((sp & 0xFF) + (byte)e) < 0xFF; 
+      bool c = ((sp & 0xFF) + (byte)e) > 0xFF; 
 
-      F = 0;
+      F = 0; // Z=0; N=0;
       if (h) F |= 0x20;
       if (c) F |= 0x10;
     }
