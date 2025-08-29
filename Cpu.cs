@@ -341,6 +341,31 @@ namespace GB {
       setFlag(FLAG.H, false);
       setFlag(FLAG.C, (lastBitBefore == 1 ? true : false));
     }
+    void proc_DAA() {
+      byte a = A;
+      bool n = (F & 0x40) != 0; // substract?
+      bool h = (F & 0x20) != 0; // half-carry from prior op
+      bool c = (F & 0x10) != 0; // carry from prior op
+
+      if (!n) {
+        if (c || a > 0x99) { a = (byte)(a + 0x60); c = true; }
+        if (h || (a & 0x0F) > 0x09) { a = (byte)(a + 0x06); }
+      } else {
+        if (c) a = (byte)(a - 0x60);
+        if (h) a = (byte)(a - 0x06);
+      }
+
+      A = a;
+
+      // Flags after DAA:
+      // Z = set if A ==0; N = unchanged; H = 0; C = as computed above
+      byte f = 0;
+      if (A == 0) f |= 0x80;
+      if (n) f |= 0x40;
+      if (c) f |= 0x10;
+      F = f;
+    }
+
     void LD_HL_SP_e8 () {
       // MSB (most significant bit) -> the leftmost bit
       // MSB = 0 -> non-negative
@@ -453,7 +478,7 @@ namespace GB {
                                           H = bus.Read(PC);  
                                           PC++; 
                                           return 8;
-                /*DAA*/   case 0x27: Console.WriteLine($"0x{opCode:X2} not implemented!"); Environment.Exit(1);  return 4;
+                /*DAA*/   case 0x27: prod_DAA(); PC++;  return 4;
                 /*JR Z e8*/    case 0x28: proc_JR_COND(isFlagSet(FLAG.Z)); return 12;
                 /*ADD HL HL*/   case 0x29: proc_ADD_HL_r16(r8sToUshort(H, L)); PC++; return 8;
                 /*LD A, [HL+] */    case 0x2A:  A = bus.Read(r8sToUshort(H, L)); 
