@@ -264,11 +264,9 @@ namespace GB {
     }
 
     void proc_JR_COND(bool cond) {
+      sbyte n = (sbyte)bus.Read(PC);
       if (cond) {
-        ushort currentAddr = PC;
-        PC++;
-        sbyte n = (sbyte)bus.Read(PC);
-        proc_JP_COND_ADDR(true, (ushort)(currentAddr + n));
+        PC = (ushort)(PC + n);
       }
     }
 
