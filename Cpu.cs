@@ -20,6 +20,7 @@ namespace GB {
     ushort SP; 
     ushort PC; 
     bool IME = true; // Interrupt Master Enable
+    bool eiPending = false;
     bool isHalted = false;
 
     enum FLAG {
@@ -435,7 +436,12 @@ namespace GB {
                                           PC++; 
                                           return 8;
                 /*RLA*/   case 0x17: proc_RL_r8(ref A, true); PC++;  return 4;
-                /*JR e8 */    case 0x18: proc_JR_COND(true);  return 12;
+                /*JR e8 */    case 0x18: {
+                                           sbyte e = (sbyte)bus.Read(PC + 1);
+                                           PC+= 2;
+                                           PC = (ushort)(PC + e);
+                                           return 12;
+                                         }
                 /*ADD*/   case 0x19: proc_ADD_HL_r16(r8sToUshort(D, E)); PC++; return 8;
                 /*LD A, [DE]*/    case 0x1A:  A = bus.Read(r8sToUshort(D, E));
                                               PC++; return 8;
@@ -449,7 +455,10 @@ namespace GB {
                                            PC++;  
                                            return 8;
                 /*RRA*/   case 0x1F: proc_RR_r8(ref A, true); PC++;  return 4;
-                /*JR NZ e8*/    case 0x20: {bool t = proc_JR_COND(!isFlagSet(FLAG.Z)); return t ? 12 : 8; };
+                /*JR NZ e8*/    case 0x20: {
+                                            bool t = proc_JR_COND(!isFlagSet(FLAG.Z)); 
+                                            return t ? 12 : 8; 
+                                           };
                 /*LD HL n16*/    case 0x21: ushortToBytes(fetchImm16(), ref H, ref L);   
                                             PC++;
                                             return 12;
@@ -743,13 +752,31 @@ namespace GB {
                                              }
                 /*JP A16*/    case 0xC3: PC = fetchImm16(); // no PC++ after JP!! 
                                          return 16;
-                /*CALL NZ*/  case 0xC4: proc_CALL_COND_n16(!isFlagSet(FLAG.Z), fetchImm16());  return 24;
+                /*CALL NZ*/  case 0xC4: {
+                                          ushort a = fetchImm16();
+                                          bool take = !isFlagSet(FLAG.Z);
+                                          if (take) proc_CALL_COND_n16(true, a);
+                                          else PC++;
+                                         return take ? 24 : 12;
+                                        }
                 /*PUSH BC*/  case 0xC5: proc_PUSH_r16(B, C); PC++; return 16;
                 /*ADD A, n8*/   case 0xC6: PC++;proc_ADD_A_r8(bus.Read(PC)); PC++;  return 8;
                 /*RST $00*/   case 0xC7: proc_RST(0x0000);  return 16;
-                /*RET Z*/   case 0xC8: proc_RET_COND(isFlagSet(FLAG.Z));  return 20;
+                /*RET Z*/   case 0xC8: {
+                                         bool take = isFlagSet(FLAG.Z);
+                                         if (take) proc_RET_COND(true);
+                                         else PC++;
+                                         return take ? 20 : 8;
+                                       }
                 /*RET*/   case 0xC9: proc_RET_COND(true);  return 16;
-                /*JP Z*/    case 0xCA: proc_JP_COND_ADDR(isFlagSet(FLAG.Z), fetchImm16());  return 16;
+                /*JP Z*/    case 0xCA: {
+                                         ushort a = fetchImm16();
+                                         bool take = isFlagSet(FLAG.Z);
+                                         if (take) PC = a;
+                                         else PC++;
+
+                                         return take ? 16: 12;
+                                       }
                 /*PREFIX*/case 0xCB: Console.WriteLine($"0x{opCode:X2} not implemented!"); Environment.Exit(1);  return 4;
                 /*CALL Z*/  case 0xCC:  proc_CALL_COND_n16(isFlagSet(FLAG.Z), fetchImm16()); return 24;
                 /*CALL*/  case 0xCD: proc_CALL_COND_n16(true, fetchImm16());  return 24;
@@ -789,7 +816,16 @@ namespace GB {
                 /*PUSH*/  case 0xE5: proc_PUSH_r16(H, L); PC++; return 16;
                 /*AND A n8*/   case 0xE6: PC++; proc_AND_A_r8(bus.Read(PC)); PC++; return 8;
                 /*RST 20*/   case 0xE7: proc_RST(0x0020);  return 16;
-                /*ADD SP e8*/   case 0xE8: Console.WriteLine($"0x{opCode:X2} not implemented!"); Environment.Exit(1);  return 16;
+                /*ADD SP e8*/   case 0xE8: {
+                                             sbyte e = (sbyte)bus.Read(PC + 1);
+                                             ushort sp = SP;
+                                             ushort r = (ushort)(sp + e);
+                                             setFlag(FLAG.Z, false);
+                                             setFlag(FLAG.N, false);
+                                             setFlag(FLAG.H, ((sp & 0x0F) + ((byte)e & 0x0F)) > 0x0F);
+                                             setFlag(FLAG.C, ((sp & 0xFF) + (byte)e) > 0xFF);
+                                             return 16;
+                                           }
                 /*JP HL n16 */    case 0xE9: PC = (ushort) (L | (H << 8)); 
                                              return 4;
                 /*LD A16, A*/    case 0xEA: bus.Write(fetchImm16(), A);
@@ -830,12 +866,16 @@ namespace GB {
                 /*LD A, a16*/    case 0xFA:  A = bus.Read(fetchImm16());
                                              PC++;
                                            return 16;
-                /*EI*/    case 0xFB: IME = true; PC++;  return 4;
+                /*EI*/    case 0xFB: eiPending = true; PC++;  return 4;
                 /*ILLEGAL_FC*/case 0xFC: return 4;
                 /*ILLEGAL_FD*/case 0xFD: return 4;
                 /*CP A n8 */    case 0xFE:PC++; proc_CP_A_r8(bus.Read(PC)); PC++; return 8;
                 /*RST 38*/   case 0xFF: proc_RST(0x0038); return 16; // this is known to be buggy!
         default: Console.WriteLine($"0x{opCode:X2} not implemented!"); Environment.Exit(1); return 0;
+       }
+       if (eiPending) {
+         IME = true;
+         eiPending = false;
        }
      }
   }
