@@ -478,7 +478,7 @@ namespace GB {
                                           H = bus.Read(PC);  
                                           PC++; 
                                           return 8;
-                /*DAA*/   case 0x27: prod_DAA(); PC++;  return 4;
+                /*DAA*/   case 0x27: proc_DAA(); PC++;  return 4;
                 /*JR Z e8*/    case 0x28: proc_JR_COND(isFlagSet(FLAG.Z)); return 12;
                 /*ADD HL HL*/   case 0x29: proc_ADD_HL_r16(r8sToUshort(H, L)); PC++; return 8;
                 /*LD A, [HL+] */    case 0x2A:  A = bus.Read(r8sToUshort(H, L)); 
