@@ -346,17 +346,16 @@ namespace GB {
       // MSB = 0 -> non-negative
       // MSB = 1 -> negative
       // sbyte converts byte into signed
-      PC++;
-      sbyte e = (sbyte)bus.Read(PC);
+      sbyte e = (sbyte)bus.Read(PC++); // consume imm8
       ushort sp = SP;
-      int lo = (sp & 0xFF) + e;
-      bool h = ((sp & 0xF) + (e & 0XF)) > 0XF;
-      bool c = lo > 0xFF || lo < 0;
-      byte new_lo = (byte)lo;
-      byte new_hi = (byte)((sp >> 8) + (lo >> 8));
-      ushort hl = (ushort)((new_hi << 8) | new_lo);
-      ushortToBytes(hl,ref H,ref L);
-      SP = sp;
+      
+      // 16-bit result with wrap
+      ushort r = (ushort)(sp + e);
+      H = (byte)(r >> 8);
+      L = (byte)r:
+
+      bool h = ((sp & 0x0F) + ((byte)e & 0X0F)) > 0X0F;
+      bool c = ((sp & 0xFF) + (byte)e) < 0xFF; 
 
       F = 0;
       if (h) F |= 0x20;
