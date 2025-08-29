@@ -732,7 +732,7 @@ namespace GB {
                                          return 16;
                 /*CALL NZ*/  case 0xC4: proc_CALL_COND_n16(!isFlagSet(FLAG.Z), fetchImm16());  return 24;
                 /*PUSH BC*/  case 0xC5: proc_PUSH_r16(B, C); PC++; return 16;
-                /*ADD A, n8*/   case 0xC6: proc_ADD_A_r8(bus.Read(PC)); PC++;  return 8;
+                /*ADD A, n8*/   case 0xC6: PC++;proc_ADD_A_r8(bus.Read(PC)); PC++;  return 8;
                 /*RST $00*/   case 0xC7: proc_CALL_COND_n16(true, 0x0000);  return 16;
                 /*RET Z*/   case 0xC8: proc_RET_COND(isFlagSet(FLAG.Z));  return 20;
                 /*RET*/   case 0xC9: proc_RET_COND(true);  return 16;
@@ -740,7 +740,7 @@ namespace GB {
                 /*PREFIX*/case 0xCB: Console.WriteLine($"0x{opCode:X2} not implemented!"); Environment.Exit(1);  return 4;
                 /*CALL Z*/  case 0xCC:  proc_CALL_COND_n16(isFlagSet(FLAG.Z), fetchImm16()); return 24;
                 /*CALL*/  case 0xCD: proc_CALL_COND_n16(true, fetchImm16());  return 24;
-                /*ADC a n8*/   case 0xCE: proc_ADC_A_r8(bus.Read(PC)); PC++; return 8;
+                /*ADC a n8*/   case 0xCE: PC++; proc_ADC_A_r8(bus.Read(PC)); PC++; return 8;
                 /*RST $08*/   case 0xCF: proc_CALL_COND_n16(true, 0x0008);  return 16;
                 /*RET NC*/   case 0xD0: proc_RET_COND(!isFlagSet(FLAG.C));  return 20;
                 /*POP*/   case 0xD1: proc_POP_r16(ref D, ref E); PC++; return 12;
@@ -756,7 +756,7 @@ namespace GB {
                 /*ILLEGAL_DB*/case 0xDB:  return 4;
                 /*CALL C*/  case 0xDC: proc_CALL_COND_n16(isFlagSet(FLAG.C), fetchImm16());  return 24;
                 /*ILLEGAL_DD*/case 0xDD:  return 4;
-                /*SBC a n8*/   case 0xDE: proc_SBC_A_r8(bus.Read(PC)); PC++; return 8;
+                /*SBC a n8*/   case 0xDE:PC++; proc_SBC_A_r8(bus.Read(PC)); PC++; return 8;
                 /*RST 18*/   case 0xDF: proc_CALL_COND_n16(true, 0x0018);  return 16;
                 /*LDH a8 A*/   case 0xE0: { 
                                             PC++;
@@ -774,7 +774,7 @@ namespace GB {
                 /*ILLEGAL_E3*/case 0xE3:  return 4;
                 /*ILLEGAL_E4*/case 0xE4:  return 4;
                 /*PUSH*/  case 0xE5: proc_PUSH_r16(H, L); PC++; return 16;
-                /*AND A n8*/   case 0xE6: proc_AND_A_r8(bus.Read(PC)); PC++; return 8;
+                /*AND A n8*/   case 0xE6: PC++; proc_AND_A_r8(bus.Read(PC)); PC++; return 8;
                 /*RST 20*/   case 0xE7: proc_CALL_COND_n16(true, 0x0020);  return 16;
                 /*ADD SP e8*/   case 0xE8: Console.WriteLine($"0x{opCode:X2} not implemented!"); Environment.Exit(1);  return 16;
                 /*JP HL n16 */    case 0xE9: PC = (ushort) (L | (H << 8)); 
@@ -785,7 +785,7 @@ namespace GB {
                 /*ILLEGAL_EB*/case 0xEB: return 4;
                 /*ILLEGAL_EC*/case 0xEC: return 4;
                 /*ILLEGAL_ED*/case 0xED: return 4;
-                /*XOR A, n8*/   case 0xEE: proc_XOR_A_r8(bus.Read(PC)); PC++;  return 8;
+                /*XOR A, n8*/   case 0xEE:PC++; proc_XOR_A_r8(bus.Read(PC)); PC++;  return 8;
                 /*RST 28*/   case 0xEF: proc_CALL_COND_n16(true, 0x0028);  return 16;
                 /*LDH A, [FF00 + imm]*/   case 0xF0: { 
                                                        PC++;
@@ -805,7 +805,7 @@ namespace GB {
                                      return 4;
                 /*ILLEGAL_F4*/case 0xF4: return 4;
                 /*PUSH AF*/  case 0xF5: proc_PUSH_r16(A, F); PC++; return 16;
-                /*OR a, n8*/    case 0xF6: proc_OR_A_r8(bus.Read(PC)); PC++;  return 8;
+                /*OR a, n8*/    case 0xF6: PC++; proc_OR_A_r8(bus.Read(PC)); PC++;  return 8;
                 /*RST 30*/   case 0xF7: proc_CALL_COND_n16(true, 0x0030);  return 16;
                 /*LD HL, SP + e8*/    case 0xF8:  {
                                                     LD_HL_SP_e8();
@@ -819,7 +819,7 @@ namespace GB {
                 /*EI*/    case 0xFB: IME = true; PC++;  return 4;
                 /*ILLEGAL_FC*/case 0xFC: return 4;
                 /*ILLEGAL_FD*/case 0xFD: return 4;
-                /*CP A n8 */    case 0xFE: proc_CP_A_r8(bus.Read(PC)); PC++; return 8;
+                /*CP A n8 */    case 0xFE:PC++; proc_CP_A_r8(bus.Read(PC)); PC++; return 8;
                 /*RST 38*/   case 0xFF: proc_CALL_COND_n16(true, 0x0038); return 16; // this is known to be buggy!
         default: Console.WriteLine($"0x{opCode:X2} not implemented!"); Environment.Exit(1); return 0;
        }
