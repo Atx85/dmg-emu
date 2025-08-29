@@ -188,8 +188,8 @@ namespace GB {
 
     void proc_SBC_A_r8(byte r8) {
       int a0 = A, c = isFlagSet(FLAG.C) ? 1 : 0, r = a0 - r8 - c;
-      setFlag(FLAG.H, (a0 & 0x0F) < (r8 & 0x0F));
-      setFlag(FLAG.C, r < 0);
+      setFlag(FLAG.H, (a0 & 0x0F) < (r8 + c));
+      setFlag(FLAG.C, a0 < r8 + c);
       A = (byte)r;
       setFlag(FLAG.Z, A == 0);
       setFlag(FLAG.N, true);
@@ -227,10 +227,10 @@ namespace GB {
     }
 
     void proc_DEC_r8(ref byte register) {
-       setFlag(FLAG.H, halfCarryOnRemove(register, 1)); 
+       setFlag(FLAG.H, (register & 0x0F) == 0); 
        register -= 1;
        setFlag(FLAG.N, true);
-       setFlag(FLAG.Z, isByteZero(register));
+       setFlag(FLAG.Z, register == 0);
     }
 
     void proc_PUSH_r16(byte h, byte l) {
@@ -286,38 +286,32 @@ namespace GB {
     }
 
     // TODO test rotates!!
-    void proc_RR_r8(ref byte r8) { // rotate through c flag (old cflag becomes first)
+    void proc_RR_r8(ref byte r8, bool isAFlag) { // rotate through c flag (old cflag becomes first)
       byte cFlagBefore = (byte)(isFlagSet(FLAG.C) ? 1 : 0);
-      byte r8Copy = r8;
+      byte b0 = (byte)(r8 & 1);
       // 0011 0100 & 0000 0001
-      byte lastBitBefore = (byte)(r8Copy & 0x01);
-      r8 = (byte)((cFlagBefore << 3) | (r8 >> 1));
-      setFlag(FLAG.Z, r8 == 0);
+      r8 = (byte)((cFlagBefore << 7) | (r8 >> 1));
+      setFlag(FLAG.Z, isAFlag ? false : (r8 == 0));
       setFlag(FLAG.N, false);
       setFlag(FLAG.H, false);
-      setFlag(FLAG.C, (lastBitBefore == 1 ? true : false));
+      setFlag(FLAG.C, b0 != 0);
     }
-    void proc_RL_r8(ref byte r8) { // rotate through c flag (old cflag becomes first)
-      byte cFlagBefore = (byte)(isFlagSet(FLAG.C) ? 1 : 0);
-      byte r8Copy = r8;
-      // 0011 0100 & 0000 0001
-      byte firstBitBefore = (byte)(r8Copy & 0xF0);
-      r8 = (byte)((cFlagBefore >> 7) | (r8 << 1));
-      setFlag(FLAG.Z, r8 == 0);
+    void proc_RL_r8(ref byte r8, bool isAFlag) { // rotate through c flag (old cflag becomes first)
+      byte oldC = (byte)(isFlagSet(FLAG.C) ? 1 : 0);
+      byte b7 = (byte)(r8 >> 7);
+      r8 = (byte)((r8 << 1) | oldC);
+      setFlag(FLAG.Z, isAFlag ? false : (r8 == 0));
       setFlag(FLAG.N, false);
       setFlag(FLAG.H, false);
-      setFlag(FLAG.C, (firstBitBefore == 1 ? true : false));
+      setFlag(FLAG.C, b7 != 0);
     }
     void proc_RLC_r8(ref byte r8) { // rotate right circular (last bit becomes first) 
-      bool cFlagBefore = isFlagSet(FLAG.C);
-      byte r8Copy = r8;
-      // 0011 0100 & 0000 0001
-      byte lastBitBefore = (byte)(r8Copy & 0x01);
-      r8 = (byte)((lastBitBefore << 3) | (r8 << 1));
-      setFlag(FLAG.Z, r8 == 0);
+      byte b7 = (byte)(r8 >> 7);
+      r8 = (byte)((r8 << 1) | b7);
+      setFlag(FLAG.Z, false);
       setFlag(FLAG.N, false);
       setFlag(FLAG.H, false);
-      setFlag(FLAG.C, (lastBitBefore == 1 ? true : false));
+      setFlag(FLAG.C, b7 != 0);
     }
  
 
@@ -328,15 +322,12 @@ namespace GB {
      C - Contains old bit 0 data.
      * */
     void proc_RRC_r8(ref byte r8) { // rotate right circular (last bit becomes first) 
-      bool cFlagBefore = isFlagSet(FLAG.C);
-      byte r8Copy = r8;
-      // 0011 0100 & 0000 0001
-      byte lastBitBefore = (byte)(r8Copy & 0x01);
-      r8 = (byte)((lastBitBefore << 3) | (r8 >> 1));
-      setFlag(FLAG.Z, r8 == 0);
+    byte b0 = (byte)(r8 & 1);
+    r8 = (byte)((b0 << 7) | (r8 >> 1));
+     setFlag(FLAG.Z, false);
       setFlag(FLAG.N, false);
       setFlag(FLAG.H, false);
-      setFlag(FLAG.C, (lastBitBefore == 1 ? true : false));
+      setFlag(FLAG.C, b0 != 0);
     }
     void proc_DAA() {
       byte a = A;
@@ -443,7 +434,7 @@ namespace GB {
                                           D = bus.Read(PC);  
                                           PC++; 
                                           return 8;
-                /*RLA*/   case 0x17: proc_RL_r8(ref A); PC++;  return 4;
+                /*RLA*/   case 0x17: proc_RL_r8(ref A, true); PC++;  return 4;
                 /*JR e8 */    case 0x18: proc_JR_COND(true);  return 12;
                 /*ADD*/   case 0x19: proc_ADD_HL_r16(r8sToUshort(D, E)); PC++; return 8;
                 /*LD A, [DE]*/    case 0x1A:  A = bus.Read(r8sToUshort(D, E));
@@ -457,7 +448,7 @@ namespace GB {
                                            E = bus.Read(PC);
                                            PC++;  
                                            return 8;
-                /*RRA*/   case 0x1F: proc_RR_r8(ref A); PC++;  return 4;
+                /*RRA*/   case 0x1F: proc_RR_r8(ref A, true); PC++;  return 4;
                 /*JR NZ e8*/    case 0x20: {bool t = proc_JR_COND(!isFlagSet(FLAG.Z)); return t ? 12 : 8; };
                 /*LD HL n16*/    case 0x21: ushortToBytes(fetchImm16(), ref H, ref L);   
                                             PC++;
