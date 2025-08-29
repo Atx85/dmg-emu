@@ -253,9 +253,9 @@ namespace GB {
     }
 
     void proc_POP_r16(ref byte h,ref byte l) {
-      L = bus.Read(SP);
+      l = bus.Read(SP);
       SP++;
-      H = bus.Read(SP);
+      h = bus.Read(SP);
       SP++;
     }
 
