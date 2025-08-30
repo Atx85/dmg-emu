@@ -26,6 +26,8 @@ namespace GB {
       if (addr < 0x8000 || (addr >= 0xA000 && addr <= 0xBFFF)) {
         return cartridge.Read(addr);
       } else {
+        if (addr == 0xFF44) return 0x90; // random number for testing
+        else
         return memory[addr];
       }
     }
