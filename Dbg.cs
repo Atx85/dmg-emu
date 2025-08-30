@@ -9,8 +9,6 @@ class Dbg {
     msg = "";
   }
   public void Update() {
-    Console.Clear();
-    Console.WriteLine($"0xFF02: {bus.Read(0xFF02)}");
     if (bus.Read(0xFF02) == 0x81) {
       char c = (char)bus.Read(0xFF01);
       Console.Write(c);

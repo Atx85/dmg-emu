@@ -375,11 +375,18 @@ namespace GB {
       if (h) F |= 0x20;
       if (c) F |= 0x10;
     }
-
+    void LogCpuState() {
+      string regs = $"A:{A:X2} F:{F:X2} B:{B:X2} C:{C:X2} D:{D:X2} E:{E:X2} H:{H:X2} L:{L:X2} SP:{SP:X4} PC:{PC:X4}";
+        byte[] pcBuf = new byte[4];
+        for (int i = 0; i < 4; i++) pcBuf[i] = bus.Read((ushort)(PC + i));
+        string pcMem = $"PCMEM: {pcBuf[0]:X2},{pcBuf[1]:X2},{pcBuf[2]:X2},{pcBuf[3]:X2}";
+        Console.WriteLine($"{regs} {pcMem}");
+    }
      public int Step () {
       byte opCode = bus.Read(PC);
         dbg.Update();
         dbg.Print();
+        LogCpuState();
        switch (opCode) {
                 /*NOP*/           case 0x00: PC++; return 4;
                 /*LD BC n16 */    case 0x01: ushortToBytes(fetchImm16(), ref B, ref C);
