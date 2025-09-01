@@ -495,7 +495,7 @@ namespace GB {
                                             return t ? 12 : 8; 
                                            };
                 /*LD HL n16*/    case 0x21: ushortToBytes(fetchImm16(), ref H, ref L);   
-                                            PC++;
+                                            // PC++;
                                             return 12;
                 /*LD [HL+] A*/   case 0x22: bus.Write(r8sToUshort(H, L), A);
                                             incR8sAsUshort(ref H, ref L);
