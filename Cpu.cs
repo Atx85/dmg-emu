@@ -19,9 +19,9 @@ namespace GB {
 
     ushort SP; 
     ushort PC; 
-    bool IME = true; // Interrupt Master Enable
-    bool eiPending = false;
-    bool isHalted = false;
+    public bool IME = true; // Interrupt Master Enable
+    public bool eiPending = false;
+    public bool isHalted = false;
 
     enum FLAG {
       C = 4,
@@ -67,6 +67,34 @@ namespace GB {
         b = (byte) (num & 0x00FF);
         a = (byte) (num >> 8);
      }
+     public int handleInterrupts() {
+       byte ie = bus.Read(0xFFFF);
+       byte flags = bus.Read(0xFF0F);
+       int pending = ie & flags;
+
+       if (IME && pending != 0) {
+         IME = false;
+
+         int bit = 0;
+         while (((pending >> bit) & 1) == 0) bit++;
+
+         // clear the pending bit
+         bus.Write(0xFF0F, (byte)(flags & ~(1 << bit)));
+
+         //push pc
+         SP--;
+         bus.Write(SP, (byte)(PC >> 8));
+         SP--;
+         bus.Write(SP, (byte)(PC & 0xFF));
+
+         // jump to vector
+         PC = (ushort)(0x0040 + 8 * bit);
+
+         return 5; // ~5 m-cycles consumed
+       }
+       return 0; // no interrupt handled
+     }
+
 
      public Cpu (Bus bus) {
        this.bus = bus;
@@ -379,7 +407,7 @@ namespace GB {
       string regs = $"A:{A:X2} F:{F:X2} B:{B:X2} C:{C:X2} D:{D:X2} E:{E:X2} H:{H:X2} L:{L:X2} SP:{SP:X4} PC:{PC:X4}";
         byte[] pcBuf = new byte[4];
         for (int i = 0; i < 4; i++) pcBuf[i] = bus.Read((ushort)(PC + i));
-        string pcMem = $"PCMEM: {pcBuf[0]:X2},{pcBuf[1]:X2},{pcBuf[2]:X2},{pcBuf[3]:X2}";
+        string pcMem = $"PCMEM:{pcBuf[0]:X2},{pcBuf[1]:X2},{pcBuf[2]:X2},{pcBuf[3]:X2}";
         Console.WriteLine($"{regs} {pcMem}");
     }
      public int Step () {
