@@ -282,7 +282,8 @@ namespace GB {
     }
 
     bool proc_JR_COND(bool cond) {
-      sbyte n = (sbyte)bus.Read(PC++);
+      sbyte n = (sbyte)bus.Read((ushort)(PC + 1));
+      PC +=2;
       if (cond) {
         PC = (ushort)(PC + n);
       }
@@ -295,6 +296,8 @@ namespace GB {
         byte l = 1;
         proc_POP_r16(ref h, ref l);  
         PC = r8sToUshort(h, l);
+      } else {
+        PC++;
       }
     }
     void proc_CALL_COND_n16 (bool cond, ushort n16) {
@@ -495,7 +498,7 @@ namespace GB {
                                             return t ? 12 : 8; 
                                            };
                 /*LD HL n16*/    case 0x21: ushortToBytes(fetchImm16(), ref H, ref L);   
-                                            // PC++;
+                                            PC++;
                                             return 12;
                 /*LD [HL+] A*/   case 0x22: bus.Write(r8sToUshort(H, L), A);
                                             incR8sAsUshort(ref H, ref L);
@@ -529,6 +532,7 @@ namespace GB {
                 /*CPL*/   case 0x2F: setFlag(FLAG.N, true); setFlag(FLAG.H, true); PC++;  return 4;
                 /*JR NC e8*/    case 0x30: { bool t = proc_JR_COND(!isFlagSet(FLAG.C));   return t ? 12 : 8; }
                 /*LD SP, n16 */    case 0x31:  SP = fetchImm16(); 
+                                               PC++; // new
                                                return 12;
                 /*LD [HL-] A*/    case 0x32: bus.Write(r8sToUshort(H, L), A);
                                              decR8sAsUshort(ref H, ref L);
