@@ -419,7 +419,6 @@ namespace GB {
        switch (opCode) {
                 /*NOP*/           case 0x00: PC++; return 4;
                 /*LD BC n16 */    case 0x01: ushortToBytes(fetchImm16(), ref B, ref C);
-                                             PC++;
                                              return 12;
                 /*LD [BC] A*/    case 0x02:  bus.Write(r8sToUshort(B, C), A);
                                              PC++;
@@ -496,7 +495,6 @@ namespace GB {
                                             return t ? 12 : 8; 
                                            };
                 /*LD HL n16*/    case 0x21: ushortToBytes(fetchImm16(), ref H, ref L);   
-                                            PC++;
                                             return 12;
                 /*LD [HL+] A*/   case 0x22: bus.Write(r8sToUshort(H, L), A);
                                             incR8sAsUshort(ref H, ref L);
@@ -530,7 +528,6 @@ namespace GB {
                 /*CPL*/   case 0x2F: setFlag(FLAG.N, true); setFlag(FLAG.H, true); PC++;  return 4;
                 /*JR NC e8*/    case 0x30: { bool t = proc_JR_COND(!isFlagSet(FLAG.C));   return t ? 12 : 8; }
                 /*LD SP, n16 */    case 0x31:  SP = fetchImm16(); 
-                                               PC += 1;
                                                return 12;
                 /*LD [HL-] A*/    case 0x32: bus.Write(r8sToUshort(H, L), A);
                                              decR8sAsUshort(ref H, ref L);
