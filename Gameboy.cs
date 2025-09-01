@@ -11,16 +11,20 @@ namespace GB {
       var bus = new Bus(ref cart);
       Cpu cpu = new Cpu(bus);
       int i = 10000;
-      while(i > 0) {
+      while(true) {
         i--;
-        int cycles = cpu.Step();
+        if (cpu.haltBug) {
+          cpu.haltBug = false; 
+        } else {
+          int cycles = cpu.Step();
 
-        // ppu.Tick(cycles);
-        // timer.Tick(cycles);
-        cpu.handleInterrupts();
-        if (cpu.eiPending) {
-          cpu.IME = true;
-          cpu.eiPending = false;
+          // ppu.Tick(cycles);
+          // timer.Tick(cycles);
+          cpu.handleInterrupts();
+          if (cpu.eiPending) {
+            cpu.IME = true;
+            cpu.eiPending = false;
+          }
         }
       }
     }

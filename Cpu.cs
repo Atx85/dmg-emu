@@ -22,6 +22,7 @@ namespace GB {
     public bool IME = true; // Interrupt Master Enable
     public bool eiPending = false;
     public bool isHalted = false;
+    public bool haltBug = false;
 
     enum FLAG {
       C = 4,
@@ -639,9 +640,16 @@ namespace GB {
                 /*LD*/    case 0x73: bus.Write(r8sToUshort(H, L), E); PC++; return 8;
                 /*LD*/    case 0x74: bus.Write(r8sToUshort(H, L), H); PC++; return 8;
                 /*LD*/    case 0x75: bus.Write(r8sToUshort(H, L), L); PC++; return 8;
-                /*LD HALT*/    case 0x76: isHalted = true; 
+                /*LD HALT*/    case 0x76: 
+                                     if (!IME && (bus.Read(0xFFFF) & bus.Read(0xFF0F)) != 0) {
+                                       // halt bug triggered
+                                       isHalted = false; // cpu doesn't truely halt
+                                       haltBug = true; // handled in the next cycle
+                                     } else {
+                                      isHalted = true; 
+                                     }
                                      PC++;
-                                     return 8;
+                                     return 4;
                 /*LD*/    case 0x77: bus.Write(r8sToUshort(H, L), A); PC++; return 8;
                 /*LD*/    case 0x78: A = B; PC++; return 4;
                 /*LD*/    case 0x79: A = C; PC++; return 4;
