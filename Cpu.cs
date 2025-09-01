@@ -292,8 +292,8 @@ namespace GB {
 
     void proc_RET_COND(bool cond) {
       if (cond) {
-        byte h = 1; 
-        byte l = 1;
+        byte h = 0; 
+        byte l = 0;
         proc_POP_r16(ref h, ref l);  
         PC = r8sToUshort(h, l);
       } else {
