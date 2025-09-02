@@ -440,6 +440,10 @@ namespace GB {
         Console.WriteLine($"{regs} {pcMem}");
     }
      public int Step () {
+       if (eiPending) {
+           IME = true;
+           eiPending = false;
+        }
        byte opCode = bus.Read(PC);
        dbg.Update();
        dbg.Print();
@@ -455,7 +459,7 @@ namespace GB {
          /*INC B*/   case 0x04: proc_INC_r8(ref B);
                                 PC++;
                                 return 4;
-         /*DEC*/   case 0x05: proc_INC_r8(ref B); PC++;  return 4;
+         /*DEC*/   case 0x05: proc_DEC_r8(ref B); PC++;  return 4;
          /*LD B n8*/    case 0x06: PC++; 
                                    B = bus.Read(PC);  
                                    PC++;
@@ -854,17 +858,49 @@ namespace GB {
          /*RST $08*/   case 0xCF: proc_RST(0x0008);  return 16;
          /*RET NC*/   case 0xD0: proc_RET_COND(!isFlagSet(FLAG.C));  return 20;
          /*POP*/   case 0xD1: proc_POP_r16(ref D, ref E); PC++; return 12;
-         /*JP NC*/    case 0xD2: proc_JP_COND_ADDR(!isFlagSet(FLAG.C), fetchImm16()); return 16;
+         /*JP NC*/    case 0xD2: {
+                                   ushort a = fetchImm16();
+                                   bool take = !isFlagSet(FLAG.C);
+                                   if (take) PC = a;
+                                   else PC++;
+                                   // proc_JP_COND_ADDR(!isFlagSet(FLAG.C), fetchImm16()); 
+
+                                   return take ? 16 : 12;
+                                 }
          /*ILLEGAL_D3*/case 0xD3:  return 4;
-         /*CALL NC*/  case 0xD4: proc_CALL_COND_n16(!isFlagSet(FLAG.C), fetchImm16());  return 24;
+         /*CALL NC*/  case 0xD4: {
+                                   // proc_CALL_COND_n16(!isFlagSet(FLAG.C), fetchImm16());  
+                                   ushort a =  fetchImm16();
+                                   bool take = !isFlagSet(FLAG.C);
+                                   if (take) proc_CALL_COND_n16(true, a);
+                                   else PC++;
+                                   return take ? 24 : 12;
+                                 }
          /*PUSH*/  case 0xD5: proc_PUSH_r16(D, E); PC++; return 16;
          /*SUB A n8 */   case 0xD6: PC++; proc_SUB_A_r8(bus.Read(PC)); PC++; return 8;
          /*RST 10*/   case 0xD7: proc_RST(0x0010);  return 16;
-         /*RET C*/   case 0xD8: proc_RET_COND(isFlagSet(FLAG.C));  return 20;
+         /*RET C*/   case 0xD8: {
+                                  bool take = isFlagSet(FLAG.C);
+                                  if (take) proc_RET_COND(take);  
+                                  else PC++;
+                                  return take ? 20 : 8;
+                                }
          /*RETI*/  case 0xD9: IME = true; proc_RET_COND(true); return 16;
-         /*JP C*/    case 0xDA: proc_JP_COND_ADDR(isFlagSet(FLAG.C), fetchImm16()); return 16;
+         /*JP C*/    case 0xDA: {
+                                  ushort a = fetchImm16();
+                                  bool take = isFlagSet(FLAG.C);
+                                  if (take) proc_JP_COND_ADDR(true, a); 
+                                  else PC++;
+                                  return take ? 16 : 12;
+                                }
          /*ILLEGAL_DB*/case 0xDB:  return 4;
-         /*CALL C*/  case 0xDC: proc_CALL_COND_n16(isFlagSet(FLAG.C), fetchImm16());  return 24;
+         /*CALL C*/  case 0xDC: {
+                                  ushort a = fetchImm16();
+                                  bool take = isFlagSet(FLAG.C);
+                                  if (take) proc_CALL_COND_n16(true, a);  
+                                  else PC++;
+                                  return take ? 24 : 12;
+                                }
          /*ILLEGAL_DD*/case 0xDD:  return 4;
          /*SBC a n8*/   case 0xDE:PC++; proc_SBC_A_r8(bus.Read(PC)); PC++; return 8;
          /*RST 18*/   case 0xDF: proc_RST(0x0018);  return 16;
@@ -895,6 +931,7 @@ namespace GB {
                                       setFlag(FLAG.H, ((sp & 0x0F) + ((byte)e & 0x0F)) > 0x0F);
                                       setFlag(FLAG.C, ((sp & 0xFF) + (byte)e) > 0xFF);
                                       SP = r; // maybe
+                                      PC += 2;
                                       return 16;
                                     }
          /*JP HL n16 */    case 0xE9: PC = (ushort) (L | (H << 8)); 

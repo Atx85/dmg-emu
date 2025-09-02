@@ -22,10 +22,10 @@ namespace GB {
           // ppu.Tick(cycles);
           // timer.Tick(cycles);
           cpu.handleInterrupts();
-          if (cpu.eiPending) {
-            cpu.IME = true;
-            cpu.eiPending = false;
-          }
+         // if (cpu.eiPending) {
+         //   cpu.IME = true;
+         //   cpu.eiPending = false;
+         // }
         }
       }
     }
