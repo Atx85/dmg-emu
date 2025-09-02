@@ -9,6 +9,7 @@ public class Cartridge {
 
   public void load(string path) {
     data = File.ReadAllBytes(path); 
+    /*
     Console.Write($"Title :"); 
     for(var i = 0x0134; i<0x0143; i++) {
       if ((char)data[i] >= 65 && (char)data[i] < 91) 
@@ -62,6 +63,6 @@ public class Cartridge {
         checksum = (byte)(checksum - data[address] - 1);
     }
     Console.WriteLine($"Checksum: {((checksum == data[0x14d]) ? "ok" : "")}");
-  }
+ */ }
 }
 }

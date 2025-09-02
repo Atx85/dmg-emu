@@ -16,7 +16,8 @@ namespace GB {
         if (cpu.haltBug) {
           cpu.haltBug = false; 
         } else {
-          int cycles = cpu.Step();
+          // int cycles = cpu.Step();
+          cpu.Step();
 
           // ppu.Tick(cycles);
           // timer.Tick(cycles);
