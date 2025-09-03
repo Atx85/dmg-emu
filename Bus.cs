@@ -25,11 +25,12 @@ namespace GB {
     public byte Read(int addr) {
       if (addr < 0x8000 || (addr >= 0xA000 && addr <= 0xBFFF)) {
         return cartridge.Read(addr);
-      } else {
-        if (addr == 0xFF44) return 0x90; // random number for testing
-        else
-        return memory[addr];
+      } 
+      if (addr >= 0xE000 && addr <= 0xFDFF) {
+        return memory[addr - 0x2000];
       }
+      if (addr == 0xFF44) return 0x90; // random number for testing
+      return memory[addr];
     }
 
     public void Write(int addr, byte val) {
@@ -38,6 +39,10 @@ namespace GB {
       }
       if (addr >= 0xA000 && addr <= 0xBFFF){
         // cartridge.Write(addr, val); // writing to cartridge rom
+        return;
+      }
+      if (addr >= 0xE000 && addr <= -xFDFF) {
+        memory[addr - 0x2000] = val;
         return;
       }
       memory[addr] = val;
