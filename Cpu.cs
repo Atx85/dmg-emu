@@ -899,7 +899,7 @@ namespace GB {
          /*AND A n8*/   case 0xE6: proc_AND_A_r8(fetchImm8());  return 8;
          /*RST 20*/   case 0xE7: proc_RST(0x0020);  return 16;
          /*ADD SP e8*/   case 0xE8: {
-                                      sbyte e = (sbyte)bus.Read(PC + 1);
+                                      sbyte e = (sbyte)fetchImm8();
                                       ushort sp = SP;
                                       ushort r = (ushort)(sp + e);
                                       setFlag(FLAG.Z, false);
@@ -907,7 +907,6 @@ namespace GB {
                                       setFlag(FLAG.H, ((sp & 0x0F) + ((byte)e & 0x0F)) > 0x0F);
                                       setFlag(FLAG.C, ((sp & 0xFF) + (byte)e) > 0xFF);
                                       SP = r; // maybe
-                                      PC += 2;
                                       return 16;
                                     }
          /*JP HL n16 */    case 0xE9: PC = (ushort) (L | (H << 8)); 
