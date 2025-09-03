@@ -63,6 +63,14 @@ namespace GB {
      bool isFlagSet(FLAG pos) {
        return isBitSet((ushort)F, (int)pos);
      }
+     // new set flag
+     void SetFlag(FLAG pos, bool val) {
+       // setBit(ref F, pos, val);
+       if (val) F |= (byte)(1 << (int)pos);
+       else F &= (byte)~(1 << (int)pos);
+     }
+     bool GetFlag(FLAG f) => (F & (1 << (int)f)) != 0;
+//------------>
 
      void ushortToBytes(ushort num, ref byte a, ref byte b) {
         b = (byte) (num & 0x00FF);
@@ -154,6 +162,25 @@ namespace GB {
        val--; // TODO: what if it reaches 0??
        ushortToBytes(val, ref r1, ref r2);
      }
+
+      // INC/DEC helpers
+      byte INC(byte value) {
+        byte res = (byte)(value + 1);
+        SetFlag(FLAG.Z, res == 0);
+        SetFlag(FLAG.N, false);
+        SetFlag(FLAG.H, (value & 0x0F) == 0x0F);
+        return res;
+      }
+      byte DEC(byte value) {
+        byte res = (byte)(value - 1);
+        SetFlag(FLAG.Z, res == 0);
+        SetFlag(FLAG.N, false);
+        SetFlag(FLAG.H, (value & 0x0F) == 0x0F);
+        return res;
+      }
+
+
+      //
 
       bool isCarryFromBit3(byte a, byte b) {
         return (((a & 0x0F) + (b & 0x0F)) > 0x0F);
@@ -527,7 +554,7 @@ namespace GB {
                                       return t ? 12 : 8; 
                                     };
          /*LD HL n16*/    case 0x21: ushortToBytes(fetchImm16(), ref H, ref L);   
-                                     PC++;
+                                     // PC++;
                                      return 12;
          /*LD [HL+] A*/   case 0x22: bus.Write(r8sToUshort(H, L), A);
                                      incR8sAsUshort(ref H, ref L);
