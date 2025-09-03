@@ -503,7 +503,7 @@ namespace GB {
          /*DEC BC*/   case 0x0B: decR8sAsUshort(ref B, ref C);  return 8;
          /*INC C*/   case 0x0C: proc_INC_r8(ref C);  
                                 return 4;
-         /*DEC C*/   case 0x0D: proc_DEC_r8(ref C); PC++;  return 4;
+         /*DEC C*/   case 0x0D: proc_DEC_r8(ref C);  return 4;
          /*LD C n8*/    case 0x0E: C = bus.Read(PC);
                                    return 8;
          /*RRCA*/  case 0x0F: proc_RRC_r8(ref A); return 4;
@@ -515,7 +515,7 @@ namespace GB {
          /*INC D E*/   case 0x13: incR8sAsUshort(ref D,ref E);  return 8;
          /*INC D*/   case 0x14: proc_INC_r8(ref D);  
                                 return 4;
-         /*DEC D*/   case 0x15: proc_DEC_r8(ref D); PC++; return 4;
+         /*DEC D*/   case 0x15: proc_DEC_r8(ref D); return 4;
          /*LD D n8*/    case 0x16: D = bus.Read(PC);  
                                    return 8;
          /*RLA*/   case 0x17: proc_RL_r8(ref A, true);  return 4;
@@ -531,8 +531,7 @@ namespace GB {
          /*INC E*/   case 0x1C: proc_INC_r8(ref E);  
                                 return 4;
          /*DEC E*/   case 0x1D: proc_DEC_r8(ref E); return 4;
-         /*LD E n8 */    case 0x1E: PC++;
-                                    E = bus.Read(PC);
+         /*LD E n8 */    case 0x1E: E = fetchImm8();
                                     return 8;
          /*RRA*/   case 0x1F: proc_RR_r8(ref A, true);  return 4;
          /*JR NZ e8*/    case 0x20: {
@@ -540,12 +539,11 @@ namespace GB {
                                       return t ? 12 : 8; 
                                     };
          /*LD HL n16*/    case 0x21: ushortToBytes(fetchImm16(), ref H, ref L);   
-                                     // PC++;
                                      return 12;
          /*LD [HL+] A*/   case 0x22: bus.Write(r8sToUshort(H, L), A);
                                      incR8sAsUshort(ref H, ref L);
                                      return 8;
-         /*INC HL*/   case 0x23: incR8sAsUshort(ref H,ref L); PC++; return 8;
+         /*INC HL*/   case 0x23: incR8sAsUshort(ref H,ref L); return 8;
          /*INC H*/   case 0x24: proc_INC_r8(ref H);  
                                 return 4;
          /*DEC H*/   case 0x25: proc_DEC_r8(ref H); return 4;
@@ -561,9 +559,7 @@ namespace GB {
          /*INC L*/   case 0x2C: proc_INC_r8(ref L);  
                                 return 4;
          /*DEC L*/   case 0x2D: proc_DEC_r8(ref L);  return 4;
-         /*LD L, n8*/    case 0x2E: PC++;
-                                    L = bus.Read(PC);
-                                    return 8;
+         /*LD L, n8*/    case 0x2E: L = fetchImm8(); return 8;
          /*CPL*/   case 0x2F: setFlag(FLAG.N, true); setFlag(FLAG.H, true);   return 4;
          /*JR NC e8*/    case 0x30: { bool t = proc_JR_COND(!isFlagSet(FLAG.C));   return t ? 12 : 8; }
          /*LD SP, n16 */    case 0x31:  SP = fetchImm16(); 
@@ -586,12 +582,8 @@ namespace GB {
                                      bus.Write(addr, val);
                                      return 12;
                                    }
-         /*LD [HL] n8*/    case 0x36:  PC++; 
-                                       {
-                                         byte  val = bus.Read(PC);
-                                         bus.Write(r8sToUshort(H, L), val);
-                                       }
-                                       return 12;
+         /*LD [HL] n8*/    case 0x36: bus.Write(r8sToUshort(H, L), fetchImm8());
+                                      return 12;
          /*SCF*/   case 0x37: setFlag(FLAG.N, false); setFlag(FLAG.H, false); setFlag(FLAG.C, true); return 4;
          /*JR C*/    case 0x38: { bool t = proc_JR_COND(isFlagSet(FLAG.C));  return t ? 12 : 8; }
          /*ADD*/   case 0x39: proc_ADD_HL_r16(SP); return 8;
@@ -798,9 +790,7 @@ namespace GB {
                                      byte h = 0, l = 0;
                                      proc_POP_r16(ref h, ref l);
                                      PC = r8sToUshort(h, l);
-                                   } else {
-                                     PC++;
-                                   }
+                                   } 
                                    return t ? 20 : 8;
                                  }
          /*POP*/   case 0xC1: proc_POP_r16(ref B, ref C); return 12;
@@ -819,7 +809,7 @@ namespace GB {
                                    return take ? 24 : 12;
                                  }
          /*PUSH BC*/  case 0xC5: proc_PUSH_r16(B, C);  return 16;
-         /*ADD A, n8*/   case 0xC6: PC++;proc_ADD_A_r8(bus.Read(PC));  return 8;
+         /*ADD A, n8*/   case 0xC6: proc_ADD_A_r8(fetchImm8());  return 8;
          /*RST $00*/   case 0xC7: proc_RST(0x0000);  return 16;
          /*RET Z*/   case 0xC8: {
                                   bool take = isFlagSet(FLAG.Z);
@@ -836,7 +826,7 @@ namespace GB {
          /*PREFIX*/case 0xCB: Console.WriteLine($"0x{opCode:X2} not implemented!"); Environment.Exit(1);  return 4;
          /*CALL Z*/  case 0xCC:  proc_CALL_COND_n16(isFlagSet(FLAG.Z), fetchImm16()); return 24;
          /*CALL*/  case 0xCD: proc_CALL_COND_n16(true, fetchImm16());  return 24;
-         /*ADC a n8*/   case 0xCE: PC++; proc_ADC_A_r8(bus.Read(PC)); return 8;
+         /*ADC a n8*/   case 0xCE: proc_ADC_A_r8(fetchImm8()); return 8;
          /*RST $08*/   case 0xCF: proc_RST(0x0008);  return 16;
          /*RET NC*/   case 0xD0: proc_RET_COND(!isFlagSet(FLAG.C));  return 20;
          /*POP*/   case 0xD1: proc_POP_r16(ref D, ref E); return 12;
@@ -857,7 +847,7 @@ namespace GB {
                                    return take ? 24 : 12;
                                  }
          /*PUSH*/  case 0xD5: proc_PUSH_r16(D, E); return 16;
-         /*SUB A n8 */   case 0xD6: PC++; proc_SUB_A_r8(bus.Read(PC)); return 8;
+         /*SUB A n8 */   case 0xD6: proc_SUB_A_r8(fetchImm8()); return 8;
          /*RST 10*/   case 0xD7: proc_RST(0x0010);  return 16;
          /*RET C*/   case 0xD8: {
                                   bool take = isFlagSet(FLAG.C);
@@ -879,7 +869,7 @@ namespace GB {
                                   return take ? 24 : 12;
                                 }
          /*ILLEGAL_DD*/case 0xDD:  return 4;
-         /*SBC a n8*/   case 0xDE:PC++; proc_SBC_A_r8(bus.Read(PC));  return 8;
+         /*SBC a n8*/   case 0xDE: proc_SBC_A_r8(fetchImm8());  return 8;
          /*RST 18*/   case 0xDF: proc_RST(0x0018);  return 16;
          /*LDH a8 A*/   case 0xE0: { 
                                      byte imm = fetchImm8();
@@ -894,7 +884,7 @@ namespace GB {
          /*ILLEGAL_E3*/case 0xE3:  return 4;
          /*ILLEGAL_E4*/case 0xE4:  return 4;
          /*PUSH*/  case 0xE5: proc_PUSH_r16(H, L);  return 16;
-         /*AND A n8*/   case 0xE6: proc_AND_A_r8(bus.Read(PC++));  return 8;
+         /*AND A n8*/   case 0xE6: proc_AND_A_r8(fetchImm8());  return 8;
          /*RST 20*/   case 0xE7: proc_RST(0x0020);  return 16;
          /*ADD SP e8*/   case 0xE8: {
                                       sbyte e = (sbyte)bus.Read(PC + 1);
@@ -915,11 +905,10 @@ namespace GB {
          /*ILLEGAL_EB*/case 0xEB: return 4;
          /*ILLEGAL_EC*/case 0xEC: return 4;
          /*ILLEGAL_ED*/case 0xED: return 4;
-         /*XOR A, n8*/   case 0xEE:PC++; proc_XOR_A_r8(bus.Read(PC));  return 8;
+         /*XOR A, n8*/   case 0xEE: proc_XOR_A_r8(fetchImm8());  return 8;
          /*RST 28*/   case 0xEF: proc_RST(0x0028);  return 16;
          /*LDH A, [FF00 + imm]*/   case 0xF0: { 
-                                                PC++;
-                                                byte imm = bus.Read(PC);
+                                                byte imm = fetchImm8();
                                                 ushort addr = (ushort)(0xFF00 + imm);
                                                 A = bus.Read(addr);
                                                 return 12;
@@ -933,7 +922,7 @@ namespace GB {
                               return 4;
          /*ILLEGAL_F4*/case 0xF4: return 4;
          /*PUSH AF*/  case 0xF5: proc_PUSH_r16(A, F);  return 16;
-         /*OR a, n8*/    case 0xF6: PC++; proc_OR_A_r8(bus.Read(PC));  return 8;
+         /*OR a, n8*/    case 0xF6: proc_OR_A_r8(fetchImm8());  return 8;
          /*RST 30*/   case 0xF7: proc_RST(0x0030);  return 16;
          /*LD HL, SP + e8*/    case 0xF8:  {
                                              LD_HL_SP_e8();
@@ -945,7 +934,7 @@ namespace GB {
          /*EI*/    case 0xFB: eiPending = true;   return 4;
          /*ILLEGAL_FC*/case 0xFC: return 4;
          /*ILLEGAL_FD*/case 0xFD: return 4;
-         /*CP A n8 */    case 0xFE:PC++; proc_CP_A_r8(bus.Read(PC));  return 8;
+         /*CP A n8 */    case 0xFE: proc_CP_A_r8(fetchImm8());  return 8;
          /*RST 38*/   case 0xFF: proc_RST(0x0038); return 16; // this is known to be buggy!
          default: Console.WriteLine($"0x{opCode:X2} not implemented!"); Environment.Exit(1); return 0;
        }
