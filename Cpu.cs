@@ -24,6 +24,8 @@ namespace GB {
     public bool isHalted = false;
     public bool haltBug = false;
 
+    bool first = true;
+
     enum FLAG {
       C = 4,
       H,
@@ -464,10 +466,16 @@ namespace GB {
         Console.WriteLine($"{regs} {pcMem}");
     }
      public int Step () {
+       if (first) {
+         first = false;
+       LogCpuState();
+       }
+
        if (eiPending) {
            IME = true;
            eiPending = false;
         }
+       ushort pcBefore = PC;
        byte opCode = bus.Read(PC++);
        int cycles = Execute(opCode);
        dbg.Update();
@@ -488,7 +496,7 @@ namespace GB {
          /*INC B*/   case 0x04: proc_INC_r8(ref B);
                                 return 4;
          /*DEC*/   case 0x05: proc_DEC_r8(ref B); return 4;
-         /*LD B n8*/    case 0x06: B = bus.Read(PC);  
+         /*LD B n8*/    case 0x06: B = fetchImm8();  
                                    return 8;
          /*RLCA*/  case 0x07: proc_RLC_r8(ref A);  return 4;
          /*LD*/    case 0x08: {
@@ -504,7 +512,7 @@ namespace GB {
          /*INC C*/   case 0x0C: proc_INC_r8(ref C);  
                                 return 4;
          /*DEC C*/   case 0x0D: proc_DEC_r8(ref C);  return 4;
-         /*LD C n8*/    case 0x0E: C = bus.Read(PC);
+         /*LD C n8*/    case 0x0E: C = fetchImm8();
                                    return 8;
          /*RRCA*/  case 0x0F: proc_RRC_r8(ref A); return 4;
          /*STOP*/  case 0x10: Console.WriteLine($"0x{opCode:X2} not implemented!"); Environment.Exit(1);  return 4;
@@ -516,11 +524,11 @@ namespace GB {
          /*INC D*/   case 0x14: proc_INC_r8(ref D);  
                                 return 4;
          /*DEC D*/   case 0x15: proc_DEC_r8(ref D); return 4;
-         /*LD D n8*/    case 0x16: D = bus.Read(PC);  
+         /*LD D n8*/    case 0x16: D = fetchImm8();  
                                    return 8;
          /*RLA*/   case 0x17: proc_RL_r8(ref A, true);  return 4;
          /*JR e8 */    case 0x18: {
-                                    sbyte e = (sbyte)bus.Read(PC++);
+                                    sbyte e = (sbyte)fetchImm8();
                                     PC = (ushort)(PC + e);
                                     return 12;
                                   }
@@ -547,7 +555,7 @@ namespace GB {
          /*INC H*/   case 0x24: proc_INC_r8(ref H);  
                                 return 4;
          /*DEC H*/   case 0x25: proc_DEC_r8(ref H); return 4;
-         /*LD H n8*/    case 0x26: H = bus.Read(PC);  
+         /*LD H n8*/    case 0x26: H = fetchImm8();;  
                                    return 8;
          /*DAA*/   case 0x27: proc_DAA();  return 4;
          /*JR Z e8*/    case 0x28: { bool t = proc_JR_COND(isFlagSet(FLAG.Z));  return t ? 12 : 8; }
@@ -594,7 +602,7 @@ namespace GB {
          /*INC A*/   case 0x3C: proc_INC_r8(ref A); 
                                 return 4;
          /*DEC A*/   case 0x3D: proc_DEC_r8(ref A); return 4;
-         /*LD A, n8*/    case 0x3E: A = bus.Read(PC);
+         /*LD A, n8*/    case 0x3E: A = fetchImm8();
                                     return 8;
          /*CCF*/   case 0x3F: setFlag(FLAG.N, false); setFlag(FLAG.H, false); setFlag(FLAG.C, !isFlagSet(FLAG.C));  return 4;
 
