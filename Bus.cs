@@ -41,7 +41,7 @@ namespace GB {
         // cartridge.Write(addr, val); // writing to cartridge rom
         return;
       }
-      if (addr >= 0xE000 && addr <= -xFDFF) {
+      if (addr >= 0xE000 && addr <= 0xFDFF) {
         memory[addr - 0x2000] = val;
         return;
       }
