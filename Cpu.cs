@@ -471,84 +471,77 @@ namespace GB {
            IME = true;
            eiPending = false;
         }
-       byte opCode = bus.Read(PC);
+       byte opCode = bus.Read(PC++);
+       int cycles = Execute(opCode);
        dbg.Update();
        dbg.Print();
        LogCpuState();
-       switch (opCode) {
-         /*NOP*/           case 0x00: PC++; return 4;
+       return cycles;
+     }
+
+     private int Execute(byte opCode) {
+       switch(opCode) {
+
+         /*NOP*/           case 0x00: return 4;
          /*LD BC n16 */    case 0x01: ushortToBytes(fetchImm16(), ref B, ref C);
                                       return 12;
          /*LD [BC] A*/    case 0x02:  bus.Write(r8sToUshort(B, C), A);
-                                      PC++;
                                       return 8;
-         /*INC BC*/   case 0x03: incR8sAsUshort(ref B,ref C); PC++; return 8;
+         /*INC BC*/   case 0x03: incR8sAsUshort(ref B,ref C); return 8;
          /*INC B*/   case 0x04: proc_INC_r8(ref B);
-                                PC++;
                                 return 4;
-         /*DEC*/   case 0x05: proc_DEC_r8(ref B); PC++;  return 4;
+         /*DEC*/   case 0x05: proc_DEC_r8(ref B); return 4;
          /*LD B n8*/    case 0x06: PC++; 
                                    B = bus.Read(PC);  
-                                   PC++;
                                    return 8;
-         /*RLCA*/  case 0x07: proc_RLC_r8(ref A); PC++; return 4;
+         /*RLCA*/  case 0x07: proc_RLC_r8(ref A);  return 4;
          /*LD*/    case 0x08: {
                                 var a16 = fetchImm16();
                                 bus.Write(a16, (byte)(SP & 0xFF)); // i don't know if this is a new sp
                                 bus.Write(a16 + 1, (byte)((SP & 0xFF00) >> 8)); // i don't know if this should be an increased sp 
-                                PC++;
                               }
                               return 20;
-         /*ADD*/   case 0x09: proc_ADD_HL_r16(r8sToUshort(B, C)); PC++;  return 8;
+         /*ADD*/   case 0x09: proc_ADD_HL_r16(r8sToUshort(B, C));  return 8;
          /*LD A, [BC] */    case 0x0A: A = bus.Read(r8sToUshort(B, C));
-                                       PC++;
                                        return 8;
-         /*DEC BC*/   case 0x0B: decR8sAsUshort(ref B, ref C); PC++;  return 8;
+         /*DEC BC*/   case 0x0B: decR8sAsUshort(ref B, ref C);  return 8;
          /*INC C*/   case 0x0C: proc_INC_r8(ref C);  
-                                PC++;
                                 return 4;
          /*DEC C*/   case 0x0D: proc_DEC_r8(ref C); PC++;  return 4;
          /*LD C n8*/    case 0x0E: PC++;
                                    C = bus.Read(PC);
-                                   PC++;
                                    return 8;
-         /*RRCA*/  case 0x0F: proc_RRC_r8(ref A); PC++;  return 4;
+         /*RRCA*/  case 0x0F: proc_RRC_r8(ref A); return 4;
          /*STOP*/  case 0x10: Console.WriteLine($"0x{opCode:X2} not implemented!"); Environment.Exit(1);  return 4;
          /*LD DE n16*/    case 0x11: ushortToBytes(fetchImm16(), ref D, ref E);  
-                                     PC++;
                                      return 12;
          /*LD [DE] A*/    case 0x12: bus.Write(r8sToUshort(D, E), A);
-                                     PC++;  
                                      return 8;
-         /*INC D E*/   case 0x13: incR8sAsUshort(ref D,ref E); PC++;  return 8;
+         /*INC D E*/   case 0x13: incR8sAsUshort(ref D,ref E);  return 8;
          /*INC D*/   case 0x14: proc_INC_r8(ref D);  
-                                PC++;
                                 return 4;
          /*DEC D*/   case 0x15: proc_DEC_r8(ref D); PC++; return 4;
          /*LD D n8*/    case 0x16: PC++; 
                                    D = bus.Read(PC);  
-                                   PC++; 
                                    return 8;
-         /*RLA*/   case 0x17: proc_RL_r8(ref A, true); PC++;  return 4;
+         /*RLA*/   case 0x17: proc_RL_r8(ref A, true);  return 4;
          /*JR e8 */    case 0x18: {
                                     sbyte e = (sbyte)bus.Read(PC + 1);
                                     PC+= 2;
                                     PC = (ushort)(PC + e);
                                     return 12;
                                   }
-         /*ADD*/   case 0x19: proc_ADD_HL_r16(r8sToUshort(D, E)); PC++; return 8;
+         /*ADD*/   case 0x19: proc_ADD_HL_r16(r8sToUshort(D, E)); return 8;
          /*LD A, [DE]*/    case 0x1A:  A = bus.Read(r8sToUshort(D, E));
-                                       PC++; return 8;
-         /*DEC DE*/   case 0x1B:  decR8sAsUshort(ref D, ref E); PC++;  return 8;
+                                       return 8;
+         /*DEC DE*/   case 0x1B:  decR8sAsUshort(ref D, ref E);  return 8;
          /*INC E*/   case 0x1C: proc_INC_r8(ref E);  
-                                PC++;
                                 return 4;
-         /*DEC E*/   case 0x1D: proc_DEC_r8(ref E); PC++; return 4;
+         /*DEC E*/   case 0x1D: proc_DEC_r8(ref E); return 4;
          /*LD E n8 */    case 0x1E: PC++;
                                     E = bus.Read(PC);
-                                    PC++;  
                                     return 8;
-         /*RRA*/   case 0x1F: proc_RR_r8(ref A, true); PC++;  return 4;
+         /*RRA*/   case 0x1F: proc_RR_r8(ref A, true);  return 4;
          /*JR NZ e8*/    case 0x20: {
                                       bool t = proc_JR_COND(!isFlagSet(FLAG.Z)); 
                                       return t ? 12 : 8; 
@@ -558,49 +551,40 @@ namespace GB {
                                      return 12;
          /*LD [HL+] A*/   case 0x22: bus.Write(r8sToUshort(H, L), A);
                                      incR8sAsUshort(ref H, ref L);
-                                     PC++;  
                                      return 8;
          /*INC HL*/   case 0x23: incR8sAsUshort(ref H,ref L); PC++; return 8;
          /*INC H*/   case 0x24: proc_INC_r8(ref H);  
-                                PC++;
                                 return 4;
-         /*DEC H*/   case 0x25: proc_DEC_r8(ref H); PC++; return 4;
+         /*DEC H*/   case 0x25: proc_DEC_r8(ref H); return 4;
          /*LD H n8*/    case 0x26: PC++; 
                                    H = bus.Read(PC);  
-                                   PC++; 
                                    return 8;
-         /*DAA*/   case 0x27: proc_DAA(); PC++;  return 4;
+         /*DAA*/   case 0x27: proc_DAA();  return 4;
          /*JR Z e8*/    case 0x28: { bool t = proc_JR_COND(isFlagSet(FLAG.Z));  return t ? 12 : 8; }
-         /*ADD HL HL*/   case 0x29: proc_ADD_HL_r16(r8sToUshort(H, L)); PC++; return 8;
+         /*ADD HL HL*/   case 0x29: proc_ADD_HL_r16(r8sToUshort(H, L));  return 8;
          /*LD A, [HL+] */    case 0x2A:  A = bus.Read(r8sToUshort(H, L)); 
                                          incR8sAsUshort(ref H,ref L);
-                                         PC++;
                                          return 8;
-         /*DEC HL*/   case 0x2B: decR8sAsUshort(ref H, ref L); PC++;  return 8;
+         /*DEC HL*/   case 0x2B: decR8sAsUshort(ref H, ref L);  return 8;
          /*INC L*/   case 0x2C: proc_INC_r8(ref L);  
-                                PC++;
                                 return 4;
-         /*DEC L*/   case 0x2D: proc_DEC_r8(ref L); PC++;  return 4;
+         /*DEC L*/   case 0x2D: proc_DEC_r8(ref L);  return 4;
          /*LD L, n8*/    case 0x2E: PC++;
                                     L = bus.Read(PC);
-                                    PC++; 
                                     return 8;
-         /*CPL*/   case 0x2F: setFlag(FLAG.N, true); setFlag(FLAG.H, true); PC++;  return 4;
+         /*CPL*/   case 0x2F: setFlag(FLAG.N, true); setFlag(FLAG.H, true);   return 4;
          /*JR NC e8*/    case 0x30: { bool t = proc_JR_COND(!isFlagSet(FLAG.C));   return t ? 12 : 8; }
          /*LD SP, n16 */    case 0x31:  SP = fetchImm16(); 
-                                        PC++; // new
                                         return 12;
          /*LD [HL-] A*/    case 0x32: bus.Write(r8sToUshort(H, L), A);
                                       decR8sAsUshort(ref H, ref L);
-                                      PC++;  
                                       return 8;
-         /*INC SP*/   case 0x33: SP++; PC++;  return 8;
+         /*INC SP*/   case 0x33: SP++;  return 8;
          /*INC HL */ case 0x34: {
                                   var addr = r8sToUshort(H, L);
                                   byte val = bus.Read(addr);
                                   proc_INC_r8(ref val); 
                                   bus.Write(addr, val);
-                                  PC++;
                                   return 12;
                                 } 
          /*DEC [HL]*/   case 0x35: {  
@@ -608,7 +592,6 @@ namespace GB {
                                      byte val = bus.Read(addr);
                                      proc_DEC_r8(ref val);
                                      bus.Write(addr, val);
-                                     PC++;
                                      return 12;
                                    }
          /*LD [HL] n8*/    case 0x36:  PC++; 
@@ -616,88 +599,82 @@ namespace GB {
                                          byte  val = bus.Read(PC);
                                          bus.Write(r8sToUshort(H, L), val);
                                        }
-                                       PC++;
                                        return 12;
-         /*SCF*/   case 0x37: setFlag(FLAG.N, false); setFlag(FLAG.H, false); setFlag(FLAG.C, true); PC++; return 4;
+         /*SCF*/   case 0x37: setFlag(FLAG.N, false); setFlag(FLAG.H, false); setFlag(FLAG.C, true); return 4;
          /*JR C*/    case 0x38: { bool t = proc_JR_COND(isFlagSet(FLAG.C));  return t ? 12 : 8; }
-         /*ADD*/   case 0x39: proc_ADD_HL_r16(SP); PC++; return 8;
+         /*ADD*/   case 0x39: proc_ADD_HL_r16(SP); return 8;
          /*LD A, [HL-] */    case 0x3A:  A = bus.Read(r8sToUshort(H, L)); 
                                          decR8sAsUshort(ref H,ref L);
-                                         PC++; return 8;
-         /*DEC*/   case 0x3B: SP--; PC++; return 8;
+                                         return 8;
+         /*DEC*/   case 0x3B: SP--; return 8;
          /*INC A*/   case 0x3C: proc_INC_r8(ref A); 
-                                PC++;
                                 return 4;
-         /*DEC A*/   case 0x3D: proc_DEC_r8(ref A); PC++; return 4;
+         /*DEC A*/   case 0x3D: proc_DEC_r8(ref A); return 4;
          /*LD A, n8*/    case 0x3E: PC++;
                                     A = bus.Read(PC);
-                                    PC++;
                                     return 8;
-         /*CCF*/   case 0x3F: setFlag(FLAG.N, false); setFlag(FLAG.H, false); setFlag(FLAG.C, !isFlagSet(FLAG.C)); PC++; return 4;
+         /*CCF*/   case 0x3F: setFlag(FLAG.N, false); setFlag(FLAG.H, false); setFlag(FLAG.C, !isFlagSet(FLAG.C));  return 4;
 
-         /*LD B, B */    case 0x40: PC++; return 4;
-         /*LD*/    case 0x41: B = C; PC++; return 4;
-         /*LD*/    case 0x42: B = D; PC++; return 4;
-         /*LD*/    case 0x43: B = E; PC++; return 4;
-         /*LD*/    case 0x44: B = H; PC++; return 4;
-         /*LD*/    case 0x45: B = L; PC++; return 4;
+         /*LD B, B */    case 0x40:  return 4;
+         /*LD*/    case 0x41: B = C; return 4;
+         /*LD*/    case 0x42: B = D; return 4;
+         /*LD*/    case 0x43: B = E; return 4;
+         /*LD*/    case 0x44: B = H; return 4;
+         /*LD*/    case 0x45: B = L; return 4;
          /*LD*/    case 0x46: B = bus.Read(r8sToUshort(H, L)); 
-                              PC++;
                               return 8;
-         /*LD*/    case 0x47: B = A; PC++; return 4;
-         /*LD*/    case 0x48: C = B; PC++; return 4;
-         /*LD C, C*/    case 0x49: /*C = C;*/ PC++;  return 4;
-         /*LD*/    case 0x4A: C = D; PC++; return 4;
-         /*LD*/    case 0x4B: C = E; PC++; return 4;
-         /*LD*/    case 0x4C: C = H; PC++; return 4;
-         /*LD*/    case 0x4D: C = L; PC++; return 4;
-         /*LD*/    case 0x4E: C = bus.Read(r8sToUshort(H, L)); PC++; return 8;
-         /*LD*/    case 0x4F: C = A; PC++; return 4;
+         /*LD*/    case 0x47: B = A;  return 4;
+         /*LD*/    case 0x48: C = B;  return 4;
+         /*LD C, C*/    case 0x49: /*C = C;*/   return 4;
+         /*LD*/    case 0x4A: C = D; return 4;
+         /*LD*/    case 0x4B: C = E; return 4;
+         /*LD*/    case 0x4C: C = H; return 4;
+         /*LD*/    case 0x4D: C = L; return 4;
+         /*LD*/    case 0x4E: C = bus.Read(r8sToUshort(H, L)); return 8;
+         /*LD*/    case 0x4F: C = A; return 4;
 
-         /*LD*/    case 0x50: D = B; PC++;  return 4;
-         /*LD*/    case 0x51: D = C; PC++; return 4;
-         /*LD D,D */    case 0x52:  PC++; return 4;
-         /*LD*/    case 0x53: D = E; PC++; return 4;
-         /*LD*/    case 0x54: D = H; PC++; return 4;
-         /*LD*/    case 0x55: D = L; PC++; return 4;
+         /*LD*/    case 0x50: D = B;  return 4;
+         /*LD*/    case 0x51: D = C; return 4;
+         /*LD D,D */    case 0x52:   return 4;
+         /*LD*/    case 0x53: D = E; return 4;
+         /*LD*/    case 0x54: D = H; return 4;
+         /*LD*/    case 0x55: D = L; return 4;
          /*LD*/    case 0x56: D = bus.Read(r8sToUshort(H, L)); 
-                              PC++;
                               return 8;
-         /*LD*/    case 0x57: D = A; PC++; return 4;
-         /*LD*/    case 0x58: E = B; PC++; return 4;
-         /*LD*/    case 0x59: E = C; PC++;  return 4;
-         /*LD*/    case 0x5A: E = D; PC++; return 4;
-         /*LD E,E */    case 0x5B: PC++; return 4;
-         /*LD*/    case 0x5C: E = H; PC++; return 4;
-         /*LD*/    case 0x5D: E = L; PC++; return 4;
-         /*LD*/    case 0x5E: E = bus.Read(r8sToUshort(H, L)); PC++; return 8;
-         /*LD*/    case 0x5F: E = A; PC++; return 4;
+         /*LD*/    case 0x57: D = A; return 4;
+         /*LD*/    case 0x58: E = B; return 4;
+         /*LD*/    case 0x59: E = C;  return 4;
+         /*LD*/    case 0x5A: E = D; return 4;
+         /*LD E,E */    case 0x5B:   return 4;
+         /*LD*/    case 0x5C: E = H; return 4;
+         /*LD*/    case 0x5D: E = L; return 4;
+         /*LD*/    case 0x5E: E = bus.Read(r8sToUshort(H, L)); return 8;
+         /*LD*/    case 0x5F: E = A; return 4;
 
-         /*LD*/    case 0x60: H = B; PC++;  return 4;
-         /*LD*/    case 0x61: H = C; PC++; return 4;
-         /*LD*/    case 0x62: H = D; PC++; return 4;
-         /*LD*/    case 0x63: H = E; PC++; return 4;
-         /*LD H,H*/    case 0x64: PC++; return 4;
-         /*LD*/    case 0x65: H = L; PC++; return 4;
+         /*LD*/    case 0x60: H = B;  return 4;
+         /*LD*/    case 0x61: H = C; return 4;
+         /*LD*/    case 0x62: H = D; return 4;
+         /*LD*/    case 0x63: H = E; return 4;
+         /*LD H,H*/    case 0x64: return 4;
+         /*LD*/    case 0x65: H = L; return 4;
          /*LD*/    case 0x66: H = bus.Read(r8sToUshort(H, L)); 
-                              PC++;
                               return 8;
-         /*LD*/    case 0x67: H = A; PC++; return 4;
-         /*LD*/    case 0x68: L = B; PC++; return 4;
-         /*LD*/    case 0x69: L = C; PC++; return 4;
-         /*LD*/    case 0x6A: L = D; PC++; return 4;
-         /*LD*/    case 0x6B: L = E; PC++; return 4;
-         /*LD*/    case 0x6C: L = H; PC++; return 4;
-         /*LD L,L*/    case 0x6D: PC++; return 4;
-         /*LD*/    case 0x6E: L = bus.Read(r8sToUshort(H, L)); PC++; return 8;
-         /*LD*/    case 0x6F: L = A; PC++; return 4;
+         /*LD*/    case 0x67: H = A; return 4;
+         /*LD*/    case 0x68: L = B; return 4;
+         /*LD*/    case 0x69: L = C; return 4;
+         /*LD*/    case 0x6A: L = D; return 4;
+         /*LD*/    case 0x6B: L = E; return 4;
+         /*LD*/    case 0x6C: L = H; return 4;
+         /*LD L,L*/    case 0x6D: return 4;
+         /*LD*/    case 0x6E: L = bus.Read(r8sToUshort(H, L)); return 8;
+         /*LD*/    case 0x6F: L = A; return 4;
 
-         /*LD*/    case 0x70: bus.Write(r8sToUshort(H, L), B); PC++; return 8;
-         /*LD*/    case 0x71: bus.Write(r8sToUshort(H, L), C); PC++; return 8;
-         /*LD*/    case 0x72: bus.Write(r8sToUshort(H, L), D); PC++; return 8;
-         /*LD*/    case 0x73: bus.Write(r8sToUshort(H, L), E); PC++; return 8;
-         /*LD*/    case 0x74: bus.Write(r8sToUshort(H, L), H); PC++; return 8;
-         /*LD*/    case 0x75: bus.Write(r8sToUshort(H, L), L); PC++; return 8;
+         /*LD*/    case 0x70: bus.Write(r8sToUshort(H, L), B); return 8;
+         /*LD*/    case 0x71: bus.Write(r8sToUshort(H, L), C); return 8;
+         /*LD*/    case 0x72: bus.Write(r8sToUshort(H, L), D); return 8;
+         /*LD*/    case 0x73: bus.Write(r8sToUshort(H, L), E); return 8;
+         /*LD*/    case 0x74: bus.Write(r8sToUshort(H, L), H); return 8;
+         /*LD*/    case 0x75: bus.Write(r8sToUshort(H, L), L); return 8;
          /*LD HALT*/    case 0x76: 
                               if (!IME && (bus.Read(0xFFFF) & bus.Read(0xFF0F)) != 0) {
                                 // halt bug triggered
@@ -706,132 +683,123 @@ namespace GB {
                               } else {
                                 isHalted = true; 
                               }
-                              PC++;
                               return 4;
-         /*LD*/    case 0x77: bus.Write(r8sToUshort(H, L), A); PC++; return 8;
-         /*LD*/    case 0x78: A = B; PC++; return 4;
-         /*LD*/    case 0x79: A = C; PC++; return 4;
-         /*LD*/    case 0x7A: A = D; PC++; return 4;
-         /*LD*/    case 0x7B: A = E; PC++; return 4;
-         /*LD*/    case 0x7C: A = H; PC++; return 4;
-         /*LD*/    case 0x7D: A = L; PC++; return 4;
-         /*LD*/    case 0x7E: A = bus.Read(r8sToUshort(H, L)); PC++; return 8;
-         /*LD A, A*/    case 0x7F: PC++; return 4;
+         /*LD*/    case 0x77: bus.Write(r8sToUshort(H, L), A); return 8;
+         /*LD*/    case 0x78: A = B; return 4;
+         /*LD*/    case 0x79: A = C; return 4;
+         /*LD*/    case 0x7A: A = D; return 4;
+         /*LD*/    case 0x7B: A = E; return 4;
+         /*LD*/    case 0x7C: A = H; return 4;
+         /*LD*/    case 0x7D: A = L; return 4;
+         /*LD*/    case 0x7E: A = bus.Read(r8sToUshort(H, L)); return 8;
+         /*LD A, A*/    case 0x7F: return 4;
 
-         /*ADD*/   case 0x80: proc_ADD_A_r8(B); PC++;  return 4;
-         /*ADD*/   case 0x81: proc_ADD_A_r8(C); PC++;  return 4;
-         /*ADD*/   case 0x82: proc_ADD_A_r8(D); PC++;  return 4;
-         /*ADD*/   case 0x83: proc_ADD_A_r8(E); PC++;  return 4;
-         /*ADD*/   case 0x84: proc_ADD_A_r8(H); PC++;  return 4;
-         /*ADD*/   case 0x85: proc_ADD_A_r8(L); PC++;  return 4;
+         /*ADD*/   case 0x80: proc_ADD_A_r8(B); return 4;
+         /*ADD*/   case 0x81: proc_ADD_A_r8(C); return 4;
+         /*ADD*/   case 0x82: proc_ADD_A_r8(D); return 4;
+         /*ADD*/   case 0x83: proc_ADD_A_r8(E); return 4;
+         /*ADD*/   case 0x84: proc_ADD_A_r8(H); return 4;
+         /*ADD*/   case 0x85: proc_ADD_A_r8(L); return 4;
          /*ADD*/   case 0x86: {
                                 ushort addr = r8sToUshort(H, L);
                                 byte hl = bus.Read(addr);
                                 proc_ADD_A_r8(hl); 
-                                PC++;  
                                 return 8;
                               }
-         /*ADD*/   case 0x87: proc_ADD_A_r8(A); PC++;  return 4;
-         /*ADD*/   case 0x88: proc_ADC_A_r8(B); PC++;  return 4;
-         /*ADD*/   case 0x89: proc_ADC_A_r8(C); PC++;  return 4;
-         /*ADD*/   case 0x8A: proc_ADC_A_r8(D); PC++;  return 4;
-         /*ADD*/   case 0x8B: proc_ADC_A_r8(E); PC++;  return 4;
-         /*ADD*/   case 0x8C: proc_ADC_A_r8(H); PC++;  return 4;
-         /*ADD*/   case 0x8D: proc_ADC_A_r8(L); PC++;  return 4;
+         /*ADD*/   case 0x87: proc_ADD_A_r8(A); return 4;
+         /*ADD*/   case 0x88: proc_ADC_A_r8(B); return 4;
+         /*ADD*/   case 0x89: proc_ADC_A_r8(C); return 4;
+         /*ADD*/   case 0x8A: proc_ADC_A_r8(D); return 4;
+         /*ADD*/   case 0x8B: proc_ADC_A_r8(E); return 4;
+         /*ADD*/   case 0x8C: proc_ADC_A_r8(H); return 4;
+         /*ADD*/   case 0x8D: proc_ADC_A_r8(L); return 4;
          /*ADC (HL)*/   case 0x8E: {
                                      ushort addr = r8sToUshort(H, L);
                                      byte hl = bus.Read(addr);
                                      proc_ADC_A_r8(hl); 
-                                     PC++;  
                                      return 8;
                                    }
-         /*ADD*/   case 0x8F: proc_ADC_A_r8(A); PC++; return 4;
+         /*ADD*/   case 0x8F: proc_ADC_A_r8(A); return 4;
 
-         /*SUB*/   case 0x90: proc_SUB_A_r8(B); PC++;  return 4;
-         /*SUB*/   case 0x91: proc_SUB_A_r8(C); PC++; return 4;
-         /*SUB*/   case 0x92: proc_SUB_A_r8(D); PC++; return 4;
-         /*SUB*/   case 0x93: proc_SUB_A_r8(E); PC++; return 4;
-         /*SUB*/   case 0x94: proc_SUB_A_r8(H); PC++; return 4;
-         /*SUB*/   case 0x95: proc_SUB_A_r8(L); PC++; return 4;
+         /*SUB*/   case 0x90: proc_SUB_A_r8(B);  return 4;
+         /*SUB*/   case 0x91: proc_SUB_A_r8(C); return 4;
+         /*SUB*/   case 0x92: proc_SUB_A_r8(D); return 4;
+         /*SUB*/   case 0x93: proc_SUB_A_r8(E); return 4;
+         /*SUB*/   case 0x94: proc_SUB_A_r8(H); return 4;
+         /*SUB*/   case 0x95: proc_SUB_A_r8(L); return 4;
          /*SUB*/   case 0x96: {
                                 byte hl = busReadHL(); 
                                 proc_SUB_A_r8(hl); 
-                                PC++; 
                                 return 8;
                               }
-         /*SUB*/   case 0x97: proc_SUB_A_r8(A); PC++; return 4;
+         /*SUB*/   case 0x97: proc_SUB_A_r8(A);  return 4;
 
 
-         /*SBC*/   case 0x98: proc_SBC_A_r8(B); PC++; return 4;
-         /*SBC*/   case 0x99: proc_SBC_A_r8(C); PC++;return 4;
-         /*SBC*/   case 0x9A: proc_SBC_A_r8(D); PC++; return 4;
-         /*SBC*/   case 0x9B: proc_SBC_A_r8(E); PC++; return 4;
-         /*SBC*/   case 0x9C: proc_SBC_A_r8(H); PC++; return 4;
-         /*SBC*/   case 0x9D: proc_SBC_A_r8(L); PC++; return 4;
+         /*SBC*/   case 0x98: proc_SBC_A_r8(B);  return 4;
+         /*SBC*/   case 0x99: proc_SBC_A_r8(C); return 4;
+         /*SBC*/   case 0x9A: proc_SBC_A_r8(D);  return 4;
+         /*SBC*/   case 0x9B: proc_SBC_A_r8(E);  return 4;
+         /*SBC*/   case 0x9C: proc_SBC_A_r8(H);  return 4;
+         /*SBC*/   case 0x9D: proc_SBC_A_r8(L);  return 4;
          /*SBC*/   case 0x9E: {
                                 ushort addr = r8sToUshort(H, L);
                                 byte hl = bus.Read(addr);
                                 proc_SBC_A_r8(hl); 
-                                PC++; 
                                 return 8;
                               }
-         /*SBC*/   case 0x9F: proc_SBC_A_r8(A); PC++; return 4;
+         /*SBC*/   case 0x9F: proc_SBC_A_r8(A);  return 4;
 
-         /*AND*/   case 0xA0: proc_AND_A_r8(B); PC++; return 4;
-         /*AND*/   case 0xA1: proc_AND_A_r8(C); PC++;return 4;
-         /*AND*/   case 0xA2: proc_AND_A_r8(D); PC++;return 4;
-         /*AND*/   case 0xA3: proc_AND_A_r8(E); PC++;return 4;
-         /*AND*/   case 0xA4: proc_AND_A_r8(H); PC++;return 4;
-         /*AND*/   case 0xA5: proc_AND_A_r8(L); PC++;return 4;
+         /*AND*/   case 0xA0: proc_AND_A_r8(B);  return 4;
+         /*AND*/   case 0xA1: proc_AND_A_r8(C); return 4;
+         /*AND*/   case 0xA2: proc_AND_A_r8(D); return 4;
+         /*AND*/   case 0xA3: proc_AND_A_r8(E); return 4;
+         /*AND*/   case 0xA4: proc_AND_A_r8(H); return 4;
+         /*AND*/   case 0xA5: proc_AND_A_r8(L); return 4;
          /*AND*/   case 0xA6: {
                                 proc_AND_A_r8(busReadHL()); 
-                                PC++;
                                 return 8;
                               }
-         /*AND*/   case 0xA7: proc_AND_A_r8(A); PC++;return 4;
+         /*AND*/   case 0xA7: proc_AND_A_r8(A); return 4;
 
 
-         /*XOR*/   case 0xA8: proc_XOR_A_r8(B); PC++; return 4;
-         /*XOR*/   case 0xA9: proc_XOR_A_r8(C); PC++;return 4;
-         /*XOR*/   case 0xAA: proc_XOR_A_r8(D); PC++;return 4;
-         /*XOR*/   case 0xAB: proc_XOR_A_r8(E); PC++;return 4;
-         /*XOR*/   case 0xAC: proc_XOR_A_r8(H); PC++;return 4;
-         /*XOR*/   case 0xAD: proc_XOR_A_r8(L); PC++;return 4;
+         /*XOR*/   case 0xA8: proc_XOR_A_r8(B);  return 4;
+         /*XOR*/   case 0xA9: proc_XOR_A_r8(C); return 4;
+         /*XOR*/   case 0xAA: proc_XOR_A_r8(D); return 4;
+         /*XOR*/   case 0xAB: proc_XOR_A_r8(E); return 4;
+         /*XOR*/   case 0xAC: proc_XOR_A_r8(H); return 4;
+         /*XOR*/   case 0xAD: proc_XOR_A_r8(L); return 4;
          /*XOR*/   case 0xAE: {
                                 byte hl = busReadHL();
                                 proc_XOR_A_r8(hl); 
-                                PC++;
                                 return 8;
                               }
-         /*XOR*/   case 0xAF: proc_XOR_A_r8(A); PC++;return 4;
+         /*XOR*/   case 0xAF: proc_XOR_A_r8(A); return 4;
 
 
-         /*OR*/   case 0xB0: proc_OR_A_r8(B); PC++; return 4;
-         /*OR*/   case 0xB1: proc_OR_A_r8(C); PC++;return 4;
-         /*OR*/   case 0xB2: proc_OR_A_r8(D); PC++;return 4;
-         /*OR*/   case 0xB3: proc_OR_A_r8(E); PC++;return 4;
-         /*OR*/   case 0xB4: proc_OR_A_r8(H); PC++;return 4;
-         /*OR*/   case 0xB5: proc_OR_A_r8(L); PC++;return 4;
+         /*OR*/   case 0xB0: proc_OR_A_r8(B);  return 4;
+         /*OR*/   case 0xB1: proc_OR_A_r8(C); return 4;
+         /*OR*/   case 0xB2: proc_OR_A_r8(D); return 4;
+         /*OR*/   case 0xB3: proc_OR_A_r8(E); return 4;
+         /*OR*/   case 0xB4: proc_OR_A_r8(H); return 4;
+         /*OR*/   case 0xB5: proc_OR_A_r8(L); return 4;
          /*OR*/   case 0xB6: {
                                byte hl = busReadHL();
                                proc_OR_A_r8(hl); 
-                               PC++;
                                return 8;
                              }
-         /*OR*/   case 0xB7: proc_OR_A_r8(A); PC++;return 4;
+         /*OR*/   case 0xB7: proc_OR_A_r8(A);return 4;
 
-         /*CP*/    case 0xB8: proc_CP_A_r8(B); PC++; return 4;
-         /*CP*/    case 0xB9: proc_CP_A_r8(C); PC++; return 4;
-         /*CP*/    case 0xBA: proc_CP_A_r8(D); PC++; return 4;
-         /*CP*/    case 0xBB: proc_CP_A_r8(E); PC++; return 4;
-         /*CP*/    case 0xBC: proc_CP_A_r8(H); PC++; return 4;
-         /*CP*/    case 0xBD: proc_CP_A_r8(L); PC++; return 4;
+         /*CP*/    case 0xB8: proc_CP_A_r8(B); return 4;
+         /*CP*/    case 0xB9: proc_CP_A_r8(C); return 4;
+         /*CP*/    case 0xBA: proc_CP_A_r8(D); return 4;
+         /*CP*/    case 0xBB: proc_CP_A_r8(E); return 4;
+         /*CP*/    case 0xBC: proc_CP_A_r8(H); return 4;
+         /*CP*/    case 0xBD: proc_CP_A_r8(L); return 4;
          /*CP*/    case 0xBE: {
                                 proc_CP_A_r8(busReadHL()); 
-                                PC++; 
                                 return 8;
                               }
-         /*CP*/    case 0xBF: proc_CP_A_r8(A); PC++; return 4;
+         /*CP*/    case 0xBF: proc_CP_A_r8(A); return 4;
 
          /*RET NZ*/   case 0xC0: {
                                    bool t = !isFlagSet(FLAG.Z);
@@ -844,7 +812,7 @@ namespace GB {
                                    }
                                    return t ? 20 : 8;
                                  }
-         /*POP*/   case 0xC1: proc_POP_r16(ref B, ref C); PC++; return 12;
+         /*POP*/   case 0xC1: proc_POP_r16(ref B, ref C); return 12;
          /*JP NZ a16 */    case 0xC2: {
                                         ushort a = fetchImm16();
                                         bool t = !isFlagSet(FLAG.Z);
@@ -860,8 +828,8 @@ namespace GB {
                                    else PC++;
                                    return take ? 24 : 12;
                                  }
-         /*PUSH BC*/  case 0xC5: proc_PUSH_r16(B, C); PC++; return 16;
-         /*ADD A, n8*/   case 0xC6: PC++;proc_ADD_A_r8(bus.Read(PC)); PC++;  return 8;
+         /*PUSH BC*/  case 0xC5: proc_PUSH_r16(B, C);  return 16;
+         /*ADD A, n8*/   case 0xC6: PC++;proc_ADD_A_r8(bus.Read(PC));  return 8;
          /*RST $00*/   case 0xC7: proc_RST(0x0000);  return 16;
          /*RET Z*/   case 0xC8: {
                                   bool take = isFlagSet(FLAG.Z);
@@ -881,10 +849,10 @@ namespace GB {
          /*PREFIX*/case 0xCB: Console.WriteLine($"0x{opCode:X2} not implemented!"); Environment.Exit(1);  return 4;
          /*CALL Z*/  case 0xCC:  proc_CALL_COND_n16(isFlagSet(FLAG.Z), fetchImm16()); return 24;
          /*CALL*/  case 0xCD: proc_CALL_COND_n16(true, fetchImm16());  return 24;
-         /*ADC a n8*/   case 0xCE: PC++; proc_ADC_A_r8(bus.Read(PC)); PC++; return 8;
+         /*ADC a n8*/   case 0xCE: PC++; proc_ADC_A_r8(bus.Read(PC)); return 8;
          /*RST $08*/   case 0xCF: proc_RST(0x0008);  return 16;
          /*RET NC*/   case 0xD0: proc_RET_COND(!isFlagSet(FLAG.C));  return 20;
-         /*POP*/   case 0xD1: proc_POP_r16(ref D, ref E); PC++; return 12;
+         /*POP*/   case 0xD1: proc_POP_r16(ref D, ref E); return 12;
          /*JP NC*/    case 0xD2: {
                                    ushort a = fetchImm16();
                                    bool take = !isFlagSet(FLAG.C);
@@ -903,8 +871,8 @@ namespace GB {
                                    else PC++;
                                    return take ? 24 : 12;
                                  }
-         /*PUSH*/  case 0xD5: proc_PUSH_r16(D, E); PC++; return 16;
-         /*SUB A n8 */   case 0xD6: PC++; proc_SUB_A_r8(bus.Read(PC)); PC++; return 8;
+         /*PUSH*/  case 0xD5: proc_PUSH_r16(D, E); return 16;
+         /*SUB A n8 */   case 0xD6: PC++; proc_SUB_A_r8(bus.Read(PC)); return 8;
          /*RST 10*/   case 0xD7: proc_RST(0x0010);  return 16;
          /*RET C*/   case 0xD8: {
                                   bool take = isFlagSet(FLAG.C);
@@ -929,25 +897,23 @@ namespace GB {
                                   return take ? 24 : 12;
                                 }
          /*ILLEGAL_DD*/case 0xDD:  return 4;
-         /*SBC a n8*/   case 0xDE:PC++; proc_SBC_A_r8(bus.Read(PC)); PC++; return 8;
+         /*SBC a n8*/   case 0xDE:PC++; proc_SBC_A_r8(bus.Read(PC));  return 8;
          /*RST 18*/   case 0xDF: proc_RST(0x0018);  return 16;
          /*LDH a8 A*/   case 0xE0: { 
                                      PC++;
                                      byte imm = bus.Read(PC);
                                      bus.Write((ushort)(0xFF00 + imm), A);
-                                     PC++;
                                      return 12;
                                    }
-         /*POP*/   case 0xE1: proc_POP_r16(ref H, ref L); PC++; return 12;
+         /*POP*/   case 0xE1: proc_POP_r16(ref H, ref L); return 12;
          /*LDH [FF00 + c] A*/   case 0xE2:  {
                                               bus.Write((ushort)(0xFF00 + C), A);
-                                              PC++;
                                               return 8;
                                             }
          /*ILLEGAL_E3*/case 0xE3:  return 4;
          /*ILLEGAL_E4*/case 0xE4:  return 4;
-         /*PUSH*/  case 0xE5: proc_PUSH_r16(H, L); PC++; return 16;
-         /*AND A n8*/   case 0xE6: PC++; proc_AND_A_r8(bus.Read(PC)); PC++; return 8;
+         /*PUSH*/  case 0xE5: proc_PUSH_r16(H, L);  return 16;
+         /*AND A n8*/   case 0xE6: PC++; proc_AND_A_r8(bus.Read(PC));  return 8;
          /*RST 20*/   case 0xE7: proc_RST(0x0020);  return 16;
          /*ADD SP e8*/   case 0xE8: {
                                       sbyte e = (sbyte)bus.Read(PC + 1);
@@ -964,47 +930,41 @@ namespace GB {
          /*JP HL n16 */    case 0xE9: PC = (ushort) (L | (H << 8)); 
                                       return 4;
          /*LD A16, A*/    case 0xEA: bus.Write(fetchImm16(), A);
-                                     PC++;
                                      return 16;
          /*ILLEGAL_EB*/case 0xEB: return 4;
          /*ILLEGAL_EC*/case 0xEC: return 4;
          /*ILLEGAL_ED*/case 0xED: return 4;
-         /*XOR A, n8*/   case 0xEE:PC++; proc_XOR_A_r8(bus.Read(PC)); PC++;  return 8;
+         /*XOR A, n8*/   case 0xEE:PC++; proc_XOR_A_r8(bus.Read(PC));  return 8;
          /*RST 28*/   case 0xEF: proc_RST(0x0028);  return 16;
          /*LDH A, [FF00 + imm]*/   case 0xF0: { 
                                                 PC++;
                                                 byte imm = bus.Read(PC);
                                                 ushort addr = (ushort)(0xFF00 + imm);
                                                 A = bus.Read(addr);
-                                                PC++;
                                                 return 12;
                                               } 
-         /*POP*/   case 0xF1: proc_POP_r16(ref A, ref F); F &= 0xF0; /* bits 3-0 are always zero) */ PC++; return 12;
+         /*POP*/   case 0xF1: proc_POP_r16(ref A, ref F); F &= 0xF0; /* bits 3-0 are always zero) */  return 12;
          /*LDH A, [FF00 + C]*/   case 0xF2: {
                                               A = bus.Read((ushort)(0xFF00 + C));
-                                              PC++;
                                               return 8;
                                             }
          /*DI*/    case 0xF3: IME = false; 
-                              PC++;
                               return 4;
          /*ILLEGAL_F4*/case 0xF4: return 4;
-         /*PUSH AF*/  case 0xF5: proc_PUSH_r16(A, F); PC++; return 16;
-         /*OR a, n8*/    case 0xF6: PC++; proc_OR_A_r8(bus.Read(PC)); PC++;  return 8;
+         /*PUSH AF*/  case 0xF5: proc_PUSH_r16(A, F);  return 16;
+         /*OR a, n8*/    case 0xF6: PC++; proc_OR_A_r8(bus.Read(PC));  return 8;
          /*RST 30*/   case 0xF7: proc_RST(0x0030);  return 16;
          /*LD HL, SP + e8*/    case 0xF8:  {
                                              LD_HL_SP_e8();
-                                             PC++;
                                              return 12;
                                            }
-         /*LD SP HL*/    case 0xF9: SP = r8sToUshort(H, L); PC++;  return 8;
+         /*LD SP HL*/    case 0xF9: SP = r8sToUshort(H, L);   return 8;
          /*LD A, a16*/    case 0xFA:  A = bus.Read(fetchImm16());
-                                      PC++;
                                       return 16;
-         /*EI*/    case 0xFB: eiPending = true; PC++;  return 4;
+         /*EI*/    case 0xFB: eiPending = true;   return 4;
          /*ILLEGAL_FC*/case 0xFC: return 4;
          /*ILLEGAL_FD*/case 0xFD: return 4;
-         /*CP A n8 */    case 0xFE:PC++; proc_CP_A_r8(bus.Read(PC)); PC++; return 8;
+         /*CP A n8 */    case 0xFE:PC++; proc_CP_A_r8(bus.Read(PC));  return 8;
          /*RST 38*/   case 0xFF: proc_RST(0x0038); return 16; // this is known to be buggy!
          default: Console.WriteLine($"0x{opCode:X2} not implemented!"); Environment.Exit(1); return 0;
        }
