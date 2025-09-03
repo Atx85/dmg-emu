@@ -333,7 +333,7 @@ namespace GB {
     }
 
     bool proc_JR_COND(bool cond) {
-      sbyte n = (sbyte)fetchImm8();
+      sbyte n = (sbyte)bus.Read(PC++);
       PC +=2;
       if (cond) {
         PC = (ushort)(PC + n);
