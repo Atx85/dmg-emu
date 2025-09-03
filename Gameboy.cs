@@ -13,11 +13,7 @@ namespace GB {
       int i = 10000;
       while(true) {
         i--;
-        if (cpu.haltBug) {
-          cpu.haltBug = false; 
-        } else {
-          // int cycles = cpu.Step();
-          cpu.Step();
+        cpu.Step();
 
           // ppu.Tick(cycles);
           // timer.Tick(cycles);
@@ -26,7 +22,6 @@ namespace GB {
          //   cpu.IME = true;
          //   cpu.eiPending = false;
          // }
-        }
       }
     }
   }

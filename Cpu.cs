@@ -107,7 +107,7 @@ namespace GB {
      public Cpu (Bus bus) {
        this.bus = bus;
        dbg = new Dbg(ref bus);
-       PC = 0x100;
+       PC = 0x0100;
        A = 0x01;
        F = 0xB0;
        B = 0;
@@ -117,6 +117,11 @@ namespace GB {
        H = 0x01;
        L = 0x4D;
        SP = 0xFFFE;
+       IME = true;
+       eiPending = false;
+       isHalted = false;
+       haltBug = false;
+       isStopped = false;
      }
      byte busReadHL() {
         ushort addr = r8sToUshort(H, L);
@@ -312,9 +317,9 @@ namespace GB {
 
     void proc_PUSH_r16(byte h, byte l) {
       SP--;
-      bus.Write(SP, l);
-      SP--;
       bus.Write(SP, h);
+      SP--;
+      bus.Write(SP, l);
       Console.WriteLine($"PUSH: {h:X2}{l:X2} -> SP={SP:X4}");
     }
 
@@ -470,8 +475,18 @@ namespace GB {
        if (eiPending) {
            IME = true;
            eiPending = false;
-        }
-       byte opCode = bus.Read(PC++);
+       }
+       int ic = handleInterrupts();
+       if (ic > 0) { isHalted = false; return ic;}
+       if (isHalted) return 4;
+       byte opCode;
+       if (haltBug) {
+        opCode = bus.Read(PC++);
+        haltBug = false;
+       } else {
+         opCode = bus.Read(PC++);
+       }
+
        Console.WriteLine($"Executing opcode {opCode:X2} at PC={PC -1:X4}, SP={SP:X4}");
        int cycles = Execute(opCode);
        dbg.Update();

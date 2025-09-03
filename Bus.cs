@@ -33,6 +33,13 @@ namespace GB {
     }
 
     public void Write(int addr, byte val) {
+      if (addr < 0x8000) {
+        return;
+      }
+      if (addr > 0xA000 && addr <= 0xBFFF){
+        // cartridge.Write(addr, val); // writing to cartridge rom
+        return;
+      }
       memory[addr] = val;
     }
   }
