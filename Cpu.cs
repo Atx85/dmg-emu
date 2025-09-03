@@ -322,10 +322,8 @@ namespace GB {
     }
 
     void proc_POP_r16(ref byte h,ref byte l) {
-      l = bus.Read(SP);
-      SP++;
-      h = bus.Read(SP);
-      SP++;
+      l = bus.Read(SP++);
+      h = bus.Read(SP++);
     }
 
     void proc_JP_COND_ADDR(bool cond, ushort addr) {
@@ -502,7 +500,7 @@ namespace GB {
          /*LD*/    case 0x08: {
                                 var a16 = fetchImm16();
                                 bus.Write(a16, (byte)(SP & 0xFF)); // i don't know if this is a new sp
-                                bus.Write(a16 + 1, (byte)((SP & 0xFF00) >> 8)); // i don't know if this should be an increased sp 
+                                bus.Write(a16 + 1, (byte)((SP >> 8) & 0xFF)); // i don't know if this should be an increased sp 
                               }
                               return 20;
          /*ADD*/   case 0x09: proc_ADD_HL_r16(r8sToUshort(B, C));  return 8;
