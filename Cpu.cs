@@ -315,11 +315,13 @@ namespace GB {
       bus.Write(SP, l);
       SP--;
       bus.Write(SP, h);
+      Console.WriteLine($"PUSH: {h:X2}{l:X2} -> SP={SP:X4}");
     }
 
     void proc_POP_r16(ref byte h,ref byte l) {
       l = bus.Read(SP++);
       h = bus.Read(SP++);
+      Console.WriteLine($"POP: {h:X2}{l:X2} -> SP={SP:X4}");
     }
 
     void proc_JP_COND_ADDR(bool cond, ushort addr) {
@@ -343,11 +345,10 @@ namespace GB {
 
     void proc_RET_COND(bool cond) {
       if (cond) {
-        byte l = bus.Read(SP);
-        SP++;
-        byte h = bus.Read(SP);
-        SP++;
-        PC = (ushort)((h << 8) | l);
+        byte h = 0, l = 0;
+        proc_POP_r16(ref h, ref l);
+        PC = r8sToUshort(h, l);
+
       }    
     }
     void proc_CALL_COND_n16 (bool cond, ushort n16) {
@@ -471,6 +472,7 @@ namespace GB {
            eiPending = false;
         }
        byte opCode = bus.Read(PC++);
+       Console.WriteLine($"Executing opcode {opCode:X2} at PC={PC -1:X4}, SP={SP:X4}");
        int cycles = Execute(opCode);
        dbg.Update();
        dbg.Print();
@@ -815,7 +817,9 @@ namespace GB {
                                   if (take) proc_RET_COND(true);
                                   return take ? 20 : 8;
                                 }
-         /*RET*/   case 0xC9: proc_RET_COND(true);  return 16;
+         /*RET*/   case 0xC9: 
+                Console.WriteLine($"RET: pc={PC-1:X4} -> SP={SP:X4}");
+                                  proc_RET_COND(true);  return 16;
          /*JP Z*/    case 0xCA: {
                                   ushort a = fetchImm16();
                                   bool take = isFlagSet(FLAG.Z);
@@ -833,6 +837,7 @@ namespace GB {
                                 //proc_CALL_COND_n16(true, fetchImm16());  
                                 ushort target = fetchImm16();
                                 ushort returnAddr = PC;
+      Console.WriteLine($"CALL: {target:X4} from {returnAddr:X4} -> SP={SP:X4}");
                                 proc_PUSH_r16((byte)(returnAddr >> 8), (byte)(returnAddr & 0xFF));
                                 PC = target;
                                 return 24;
@@ -869,7 +874,11 @@ namespace GB {
                                   if (take) proc_RET_COND(take);  
                                   return take ? 20 : 8;
                                 }
-         /*RETI*/  case 0xD9: IME = true; proc_RET_COND(true); return 16;
+         /*RETI*/  case 0xD9: {
+                                IME = true; 
+                                proc_RET_COND(true); 
+                                return 16;
+                              }
          /*JP C*/    case 0xDA: {
                                   ushort a = fetchImm16();
                                   bool take = isFlagSet(FLAG.C);
