@@ -23,6 +23,7 @@ namespace GB {
     public bool eiPending = false;
     public bool isHalted = false;
     public bool haltBug = false;
+    public bool isStopped = false;
 
     bool first = true;
 
@@ -332,7 +333,7 @@ namespace GB {
     }
 
     bool proc_JR_COND(bool cond) {
-      sbyte n = (sbyte)bus.Read((ushort)(PC + 1));
+      sbyte n = (sbyte)fetchImm8();
       PC +=2;
       if (cond) {
         PC = (ushort)(PC + n);
@@ -475,7 +476,6 @@ namespace GB {
            IME = true;
            eiPending = false;
         }
-       ushort pcBefore = PC;
        byte opCode = bus.Read(PC++);
        int cycles = Execute(opCode);
        dbg.Update();
@@ -515,7 +515,11 @@ namespace GB {
          /*LD C n8*/    case 0x0E: C = fetchImm8();
                                    return 8;
          /*RRCA*/  case 0x0F: proc_RRC_r8(ref A); return 4;
-         /*STOP*/  case 0x10: Console.WriteLine($"0x{opCode:X2} not implemented!"); Environment.Exit(1);  return 4;
+         /*STOP*/  case 0x10: Console.WriteLine(
+                                  $"STOP executed at PC=0x{{(PC -1):X4}}");  
+                              PC++;
+                              isStopped = true;
+                              return 4;
          /*LD DE n16*/    case 0x11: ushortToBytes(fetchImm16(), ref D, ref E);  
                                      return 12;
          /*LD [DE] A*/    case 0x12: bus.Write(r8sToUshort(D, E), A);
