@@ -348,9 +348,7 @@ namespace GB {
         byte h = bus.Read(SP);
         SP++;
         PC = (ushort)((h << 8) | l);
-      } else {
-        PC++;
-      }
+      }    
     }
     void proc_CALL_COND_n16 (bool cond, ushort n16) {
       if (cond) {
@@ -547,8 +545,16 @@ namespace GB {
                                     return 8;
          /*RRA*/   case 0x1F: proc_RR_r8(ref A, true);  return 4;
          /*JR NZ e8*/    case 0x20: {
+                                      sbyte offset = (sbyte)bus.Read(PC++);
+                                      if (!isFlagSet(FLAG.Z)) {
+                                        PC = (ushort)(PC + offset);
+                                        return 12;
+                                      }
+                                      return 8;
+                                      /*
                                       bool t = proc_JR_COND(!isFlagSet(FLAG.Z)); 
                                       return t ? 12 : 8; 
+                                      */
                                     };
          /*LD HL n16*/    case 0x21: ushortToBytes(fetchImm16(), ref H, ref L);   
                                      return 12;
