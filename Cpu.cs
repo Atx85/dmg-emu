@@ -344,7 +344,7 @@ namespace GB {
         PC = (ushort)(PC + offset);
         return 12;
       }
-      return cond ? 12 : 8;
+      return 8;
     }
 
     void proc_RET_COND(bool cond) {
@@ -358,19 +358,15 @@ namespace GB {
     }
     void proc_CALL_COND_n16 (bool cond, ushort n16) {
       if (cond) {
-        ushort retAddr = (ushort)(PC + 3);
-        byte h = (byte)(retAddr >> 8);
-        byte l = (byte)(retAddr & 0xFF);
-        proc_PUSH_r16(h, l);
+        ushort retAddr = PC;
+        proc_PUSH_r16((byte)(retAddr >> 8), (byte)retAddr);
         PC = n16;
       }
     }
 
     void proc_RST(ushort vec) {
-      byte h = 1;
-      byte l = 1;
-      ushortToBytes((ushort)(PC + 1), ref h, ref l);
-      proc_PUSH_r16(h, l);
+      ushort retAddr = PC;
+      proc_PUSH_r16((byte)(retAddr >> 8), (byte)retAddr);
       PC = vec;
     }
 
