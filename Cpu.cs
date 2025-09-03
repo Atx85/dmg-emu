@@ -93,16 +93,12 @@ namespace GB {
          // clear the pending bit
          bus.Write(0xFF0F, (byte)(flags & ~(1 << bit)));
 
-         //push pc
-         SP--;
-         bus.Write(SP, (byte)(PC >> 8));
-         SP--;
-         bus.Write(SP, (byte)(PC & 0xFF));
+         proc_PUSH_r16((byte)(PC >> 8), (byte)(PC & 0xFF));
 
          // jump to vector
          PC = (ushort)(0x0040 + 8 * bit);
 
-         return 5; // ~5 m-cycles consumed
+         return 20; // 20 cycles on real hardware (~5 m-cycles consumed
        }
        return 0; // no interrupt handled
      }
@@ -316,9 +312,9 @@ namespace GB {
 
     void proc_PUSH_r16(byte h, byte l) {
       SP--;
-      bus.Write(SP, h);
-      SP--;
       bus.Write(SP, l);
+      SP--;
+      bus.Write(SP, h);
     }
 
     void proc_POP_r16(ref byte h,ref byte l) {
@@ -357,14 +353,14 @@ namespace GB {
     void proc_CALL_COND_n16 (bool cond, ushort n16) {
       if (cond) {
         ushort retAddr = PC;
-        proc_PUSH_r16((byte)(retAddr >> 8), (byte)retAddr);
+        proc_PUSH_r16((byte)(retAddr >> 8), (byte)(retAddr & 0xFF));
         PC = n16;
       }
     }
 
     void proc_RST(ushort vec) {
       ushort retAddr = PC;
-      proc_PUSH_r16((byte)(retAddr >> 8), (byte)retAddr);
+      proc_PUSH_r16((byte)(retAddr >> 8), (byte)(retAddr & 0xFF));
       PC = vec;
     }
 
@@ -827,18 +823,27 @@ namespace GB {
                                   return take ? 16: 12;
                                 }
          /*PREFIX*/case 0xCB: Console.WriteLine($"0x{opCode:X2} not implemented!"); Environment.Exit(1);  return 4;
-         /*CALL Z*/  case 0xCC:  proc_CALL_COND_n16(isFlagSet(FLAG.Z), fetchImm16()); return 24;
+         /*CALL Z*/  case 0xCC:  {
+                                   ushort a = fetchImm16();
+                                   bool take = isFlagSet(FLAG.Z);
+                                   if (take) proc_CALL_COND_n16(true, a); 
+                                   return take ? 24 : 12;
+                                 }
          /*CALL*/  case 0xCD: {
                                 //proc_CALL_COND_n16(true, fetchImm16());  
                                 ushort target = fetchImm16();
                                 ushort returnAddr = PC;
-                                proc_PUSH_r16((byte)(returnAddr >> 8), (byte)returnAddr);
+                                proc_PUSH_r16((byte)(returnAddr >> 8), (byte)(returnAddr & 0xFF));
                                 PC = target;
                                 return 24;
                               }
          /*ADC a n8*/   case 0xCE: proc_ADC_A_r8(fetchImm8()); return 8;
          /*RST $08*/   case 0xCF: proc_RST(0x0008);  return 16;
-         /*RET NC*/   case 0xD0: proc_RET_COND(!isFlagSet(FLAG.C));  return 20;
+         /*RET NC*/   case 0xD0: {
+                                   bool take = !isFlagSet(FLAG.C);
+                                   if (take) proc_RET_COND(true);  
+                                   return take ? 20 : 8;
+                                 }
          /*POP*/   case 0xD1: proc_POP_r16(ref D, ref E); return 12;
          /*JP NC*/    case 0xD2: {
                                    ushort a = fetchImm16();
