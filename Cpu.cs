@@ -420,38 +420,43 @@ namespace GB {
     }
 
     void proc_RST(ushort vec) {
+      //ushort retAddr = PC;
+      //proc_PUSH_r16((byte)(retAddr >> 8), (byte)(retAddr & 0xFF));
+      //PC = vec;
       ushort retAddr = PC;
-      proc_PUSH_r16((byte)(retAddr >> 8), (byte)(retAddr & 0xFF));
+      SP--;
+      bus.Write(SP, (byte)(retAddr >> 8));
+      SP--;
+      bus.Write(SP, (byte)(retAddr & 0xFF));
       PC = vec;
     }
 
     // TODO test rotates!!
     void proc_RR_r8(ref byte r8, bool isAFlag) { // rotate through c flag (old cflag becomes first)
-      byte cFlagBefore = (byte)(isFlagSet(FLAG.C) ? 1 : 0);
-      byte b0 = (byte)(r8 & 1);
-      // 0011 0100 & 0000 0001
-      r8 = (byte)((cFlagBefore << 7) | (r8 >> 1));
-      setFlag(FLAG.Z, isAFlag ? false : (r8 == 0));
+      bool oldC = isFlagSet(FLAG.C);
+      bool newC = (r8 & 1) != 0;
+      r8 = (byte)((r8 >> 1) | (oldC ? 0x80 : 0x00));
+      setFlag(FLAG.Z, isAFlag ? (r8 == 0) : false);
       setFlag(FLAG.N, false);
       setFlag(FLAG.H, false);
-      setFlag(FLAG.C, b0 != 0);
+      setFlag(FLAG.C, newC);
     }
     void proc_RL_r8(ref byte r8, bool isAFlag) { // rotate through c flag (old cflag becomes first)
-      byte oldC = (byte)(isFlagSet(FLAG.C) ? 1 : 0);
-      byte b7 = (byte)(r8 >> 7);
-      r8 = (byte)((r8 << 1) | oldC);
-      setFlag(FLAG.Z, isAFlag ? false : (r8 == 0));
+      bool oldC = isFlagSet(FLAG.C);
+      bool newC = (r8 & 0x80) != 0;
+      r8 = (byte)((r8 << 1) | (oldC ? 1 : 0)); 
+      setFlag(FLAG.Z, (isAFlag ? (r8 == 0) : false));
       setFlag(FLAG.N, false);
       setFlag(FLAG.H, false);
-      setFlag(FLAG.C, b7 != 0);
+      setFlag(FLAG.C, newC);
     }
     void proc_RLC_r8(ref byte r8) { // rotate right circular (last bit becomes first) 
-      byte b7 = (byte)(r8 >> 7);
-      r8 = (byte)((r8 << 1) | b7);
-      setFlag(FLAG.Z, false);
+      bool newC = (r8 & 0x80) != 0;
+      r8 = (byte)((r8 << 1) | (newC ? 1 : 0));
+      setFlag(FLAG.Z, r8 == 0);
       setFlag(FLAG.N, false);
       setFlag(FLAG.H, false);
-      setFlag(FLAG.C, b7 != 0);
+      setFlag(FLAG.C, newC);
     }
  
 
@@ -462,12 +467,12 @@ namespace GB {
      C - Contains old bit 0 data.
      * */
     void proc_RRC_r8(ref byte r8) { // rotate right circular (last bit becomes first) 
-    byte b0 = (byte)(r8 & 1);
-    r8 = (byte)((b0 << 7) | (r8 >> 1));
-     setFlag(FLAG.Z, false);
+    bool newC = (r8 & 1) != 0;
+    r8 = (byte)((r8 >> 1) | (newC ? 0x80 : 0x00));
+     setFlag(FLAG.Z, r8 == 0);
       setFlag(FLAG.N, false);
       setFlag(FLAG.H, false);
-      setFlag(FLAG.C, b0 != 0);
+      setFlag(FLAG.C, newC);
     }
     void proc_DAA() {
       byte a = A;
@@ -475,13 +480,23 @@ namespace GB {
       bool h = (F & 0x20) != 0; // half-carry from prior op
       bool c = (F & 0x10) != 0; // carry from prior op
 
+      int correction = 0;
       if (!n) {
-        if (c || a > 0x99) { a = (byte)(a + 0x60); c = true; }
-        if (h || (a & 0x0F) > 0x09) { a = (byte)(a + 0x06); }
+        if (h || (a & 0x0F) > 9) correction |= 0x06;
+        if (c || a > 0x99) { correction |= 0x60; c = true; }
+        a = (byte)(a + correction);
       } else {
-        if (c) a = (byte)(a - 0x60);
-        if (h) a = (byte)(a - 0x06);
+        if (h) correction |= 0x06;
+        if (c) { correction |= 0x60; }
+        a = (byte)(a - correction);
       }
+      //if (!n) {
+      //  if (c || a > 0x99) { a = (byte)(a + 0x60); c = true; }
+      //  if (h || (a & 0x0F) > 0x09) { a = (byte)(a + 0x06); }
+      //} else {
+      //  if (c) a = (byte)(a - 0x60);
+      //  if (h) a = (byte)(a - 0x06);
+      //}
 
       A = a;
 
@@ -1284,13 +1299,16 @@ private int ExecuteCB(byte cbOp) {
          /*RST 20*/   case 0xE7: proc_RST(0x0020);  return 16;
          /*ADD SP e8*/   case 0xE8: {
                                       sbyte e = (sbyte)fetchImm8();
-                                      ushort sp = SP;
-                                      ushort r = (ushort)(sp + e);
-                                      setFlag(FLAG.Z, false);
-                                      setFlag(FLAG.N, false);
-                                      setFlag(FLAG.H, ((sp & 0x0F) + ((byte)e & 0x0F)) > 0x0F);
-                                      setFlag(FLAG.C, ((sp & 0xFF) + (byte)e) > 0xFF);
-                                      SP = r; // maybe
+                                      byte low = (byte)(SP & 0xFF);
+                                      int result = low + (byte)e;
+                                      bool halfCarry = ((low & 0xF) + ((byte)e & 0xF)) > 0xF;
+                                      bool carry = result > 0xFF;
+
+                                      SP = (ushort)(SP + e);
+                                      SetFlag(FLAG.Z, false);
+                                      SetFlag(FLAG.N, false);
+                                      SetFlag(FLAG.H, halfCarry);
+                                      SetFlag(FLAG.C, carry);
                                       return 16;
                                     }
          /*JP HL n16 */    case 0xE9: PC = (ushort) (L | (H << 8)); 
@@ -1320,7 +1338,20 @@ private int ExecuteCB(byte cbOp) {
          /*OR a, n8*/    case 0xF6: proc_OR_A_r8(fetchImm8());  return 8;
          /*RST 30*/   case 0xF7: proc_RST(0x0030);  return 16;
          /*LD HL, SP + e8*/    case 0xF8:  {
-                                             LD_HL_SP_e8();
+                                             sbyte e = (sbyte)fetchImm8();
+                                             byte low = (byte)(SP & 0xFF);
+                                             int result = low + (byte)e;
+                                             bool halfCarry = ((low & 0xF) + ((byte)e & 0xF)) > 0xF;
+                                             bool carry = result > 0xFF;
+
+                                             ushort r = (ushort)(SP + e);
+                                             H = (byte)(r >> 8);
+                                             L = (byte)(r & 0xFF);
+
+                                             SetFlag(FLAG.Z, false);
+                                             SetFlag(FLAG.N, false);
+                                             SetFlag(FLAG.H, halfCarry);
+                                             SetFlag(FLAG.C, carry);
                                              return 12;
                                            }
          /*LD SP HL*/    case 0xF9: SP = r8sToUshort(H, L);   return 8;
@@ -1332,12 +1363,12 @@ private int ExecuteCB(byte cbOp) {
          /*CP A n8 */    case 0xFE: proc_CP_A_r8(fetchImm8());  return 8;
          /*RST 38*/   case 0xFF: {
                                   // proc_RST(0x0038); 
-                                  ushort retAddr = PC;
-                                  SP--;
-                                  bus.Write(SP, (byte)(retAddr >> 8));
-                                  SP--;
-                                  bus.Write(SP, (byte)(retAddr & 0xFF));
-                                  PC = 0x0038;
+                                 // ushort retAddr = PC;
+                                 // SP--;
+                                 // bus.Write(SP, (byte)(retAddr >> 8));
+                                 // SP--;
+                                 // bus.Write(SP, (byte)(retAddr & 0xFF));
+                                 // PC = 0x0038;
                                    return 16; // this is known to be buggy!
                                  }
          default: Console.WriteLine($"0x{opCode:X2} not implemented!"); Environment.Exit(1); return 0;
