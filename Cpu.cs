@@ -300,6 +300,61 @@ namespace GB {
       setFlag(FLAG.C, false);
     }
 
+    byte SWAP(byte v) {
+      byte res = (byte)((v >> 4) | (v << 4));
+      SetFlag(FLAG.Z, res == 0);
+      SetFlag(FLAG.N, false );
+      SetFlag(FLAG.H, false );
+      SetFlag(FLAG.C, false );
+      return res;
+    }
+
+    byte SLA(byte v) {
+      byte carry = (byte)((v >> 7) & 1);
+      byte res = (byte)(v << 1);
+      SetFlag(FLAG.Z, res == 0);
+      SetFlag(FLAG.N, false );
+      SetFlag(FLAG.H, false );
+      SetFlag(FLAG.C, carry == 1 );
+      return res;
+    }
+
+    byte SRA(byte v) {
+      byte carry = (byte)(v & 1);
+      byte msb = (byte)(v & 0x80);
+      byte res = (byte)((v >> 1) | msb);
+      SetFlag(FLAG.Z, res == 0);
+      SetFlag(FLAG.N, false );
+      SetFlag(FLAG.H, false );
+      SetFlag(FLAG.C, carry == 1 );
+      return res;
+    }
+
+    byte SRL(byte v) {
+      byte carry = (byte)(v & 1);
+      byte res = (byte)(v >> 1);
+      SetFlag(FLAG.Z, res == 0);
+      SetFlag(FLAG.N, false );
+      SetFlag(FLAG.H, false );
+      SetFlag(FLAG.C, carry == 1 );
+      return res;
+    }
+
+    void BIT(int bit, byte v) {
+      bool z = ((v >> bit) & 1) == 0;
+      SetFlag(FLAG.Z, z);
+      SetFlag(FLAG.N, false);
+      setFlag(FLAG.H, true);
+    }
+
+    byte RES(int bit, byte v) {
+      return (byte)(v & ~(1 << bit));
+    }
+
+    byte SET(int bit, byte v) {
+      return (byte)(v | (1 << bit));
+    }
+
 
     bool halfCarryOnRemove(byte register, byte val) {
       // 0000 0000 0
@@ -439,7 +494,303 @@ namespace GB {
       F = f;
     }
 
-    void LD_HL_SP_e8 () {
+private int BitOperation(int bit, int regIndex) {
+
+    switch (regIndex) {
+
+        case 0: BIT(bit,B); return 8;
+
+        case 1: BIT(bit,C); return 8;
+
+        case 2: BIT(bit,D); return 8;
+
+        case 3: BIT(bit,E); return 8;
+
+        case 4: BIT(bit,H); return 8;
+
+        case 5: BIT(bit,L); return 8;
+
+        case 6: { ushort addr=r8sToUshort(H,L); byte v=bus.Read(addr); BIT(bit,v); return 12; }
+
+        case 7: BIT(bit,A); return 8;
+
+        default: return 8;
+
+    }
+
+}
+
+ 
+
+private int ResOperation(int bit, int regIndex) {
+
+    switch (regIndex) {
+
+        case 0: B=RES(bit,B); return 8;
+
+        case 1: C=RES(bit,C); return 8;
+
+        case 2: D=RES(bit,D); return 8;
+
+        case 3: E=RES(bit,E); return 8;
+
+        case 4: H=RES(bit,H); return 8;
+
+        case 5: L=RES(bit,L); return 8;
+
+        case 6: { ushort addr=r8sToUshort(H,L); byte v=bus.Read(addr); v=RES(bit,v); bus.Write(addr,v); return 16; }
+
+        case 7: A=RES(bit,A); return 8;
+
+        default: return 8;
+
+    }
+
+}
+
+ 
+
+private int SetOperation(int bit, int regIndex) {
+
+    switch (regIndex) {
+
+        case 0: B=SET(bit,B); return 8;
+
+        case 1: C=SET(bit,C); return 8;
+
+        case 2: D=SET(bit,D); return 8;
+
+        case 3: E=SET(bit,E); return 8;
+
+        case 4: H=SET(bit,H); return 8;
+
+        case 5: L=SET(bit,L); return 8;
+
+        case 6: { ushort addr=r8sToUshort(H,L); byte v=bus.Read(addr); v=SET(bit,v); bus.Write(addr,v); return 16; }
+
+        case 7: A=SET(bit,A); return 8;
+
+        default: return 8;
+
+    }
+
+}
+
+ 
+
+ 
+
+private int ExecuteCB(byte cbOp) {
+
+    ushort addr;
+
+ 
+
+    switch (cbOp) {
+
+        // --- RLC r ---
+
+        case 0x00: proc_RLC_r8(ref B); return 8;
+
+        case 0x01: proc_RLC_r8(ref C); return 8;
+
+        case 0x02: proc_RLC_r8(ref D); return 8;
+
+        case 0x03: proc_RLC_r8(ref E); return 8;
+
+        case 0x04: proc_RLC_r8(ref H); return 8;
+
+        case 0x05: proc_RLC_r8(ref L); return 8;
+
+        case 0x06: addr=r8sToUshort(H,L); { byte v=bus.Read(addr); proc_RLC_r8(ref v); bus.Write(addr,v);} return 16;
+
+        case 0x07: proc_RLC_r8(ref A); return 8;
+
+ 
+
+        // --- RRC r ---
+
+        case 0x08: proc_RRC_r8(ref B); return 8;
+
+        case 0x09: proc_RRC_r8(ref C); return 8;
+
+        case 0x0A: proc_RRC_r8(ref D); return 8;
+
+        case 0x0B: proc_RRC_r8(ref E); return 8;
+
+        case 0x0C: proc_RRC_r8(ref H); return 8;
+
+        case 0x0D: proc_RRC_r8(ref L); return 8;
+
+        case 0x0E: addr=r8sToUshort(H,L); { byte v=bus.Read(addr); proc_RRC_r8(ref v); bus.Write(addr,v);} return 16;
+
+        case 0x0F: proc_RRC_r8(ref A); return 8;
+
+ 
+
+        // --- RL r ---
+
+        case 0x10: proc_RL_r8(ref B,false); return 8;
+
+        case 0x11: proc_RL_r8(ref C,false); return 8;
+
+        case 0x12: proc_RL_r8(ref D,false); return 8;
+
+        case 0x13: proc_RL_r8(ref E,false); return 8;
+
+        case 0x14: proc_RL_r8(ref H,false); return 8;
+
+        case 0x15: proc_RL_r8(ref L,false); return 8;
+
+        case 0x16: addr=r8sToUshort(H,L); { byte v=bus.Read(addr); proc_RL_r8(ref v,false); bus.Write(addr,v);} return 16;
+
+        case 0x17: proc_RL_r8(ref A,true); return 8;
+
+ 
+
+        // --- RR r ---
+
+        case 0x18: proc_RR_r8(ref B,false); return 8;
+
+        case 0x19: proc_RR_r8(ref C,false); return 8;
+
+        case 0x1A: proc_RR_r8(ref D,false); return 8;
+
+        case 0x1B: proc_RR_r8(ref E,false); return 8;
+
+        case 0x1C: proc_RR_r8(ref H,false); return 8;
+
+        case 0x1D: proc_RR_r8(ref L,false); return 8;
+
+        case 0x1E: addr=r8sToUshort(H,L); { byte v=bus.Read(addr); proc_RR_r8(ref v,false); bus.Write(addr,v);} return 16;
+
+        case 0x1F: proc_RR_r8(ref A,true); return 8;
+
+ 
+
+        // --- SLA r ---
+
+        case 0x20: B=SLA(B); return 8;
+
+        case 0x21: C=SLA(C); return 8;
+
+        case 0x22: D=SLA(D); return 8;
+
+        case 0x23: E=SLA(E); return 8;
+
+        case 0x24: H=SLA(H); return 8;
+
+        case 0x25: L=SLA(L); return 8;
+
+        case 0x26: addr=r8sToUshort(H,L); { byte v=bus.Read(addr); v=SLA(v); bus.Write(addr,v);} return 16;
+
+        case 0x27: A=SLA(A); return 8;
+
+ 
+
+        // --- SRA r ---
+
+        case 0x28: B=SRA(B); return 8;
+
+        case 0x29: C=SRA(C); return 8;
+
+        case 0x2A: D=SRA(D); return 8;
+
+        case 0x2B: E=SRA(E); return 8;
+
+        case 0x2C: H=SRA(H); return 8;
+
+        case 0x2D: L=SRA(L); return 8;
+
+        case 0x2E: addr=r8sToUshort(H,L); { byte v=bus.Read(addr); v=SRA(v); bus.Write(addr,v);} return 16;
+
+        case 0x2F: A=SRA(A); return 8;
+
+ 
+
+        // --- SWAP r ---
+
+        case 0x30: B=SWAP(B); return 8;
+
+        case 0x31: C=SWAP(C); return 8;
+
+        case 0x32: D=SWAP(D); return 8;
+
+        case 0x33: E=SWAP(E); return 8;
+
+        case 0x34: H=SWAP(H); return 8;
+
+        case 0x35: L=SWAP(L); return 8;
+
+        case 0x36: addr=r8sToUshort(H,L); { byte v=bus.Read(addr); v=SWAP(v); bus.Write(addr,v);} return 16;
+
+        case 0x37: A=SWAP(A); return 8;
+
+ 
+
+        // --- SRL r ---
+
+        case 0x38: B=SRL(B); return 8;
+
+        case 0x39: C=SRL(C); return 8;
+
+        case 0x3A: D=SRL(D); return 8;
+
+        case 0x3B: E=SRL(E); return 8;
+
+        case 0x3C: H=SRL(H); return 8;
+
+        case 0x3D: L=SRL(L); return 8;
+
+        case 0x3E: addr=r8sToUshort(H,L); { byte v=bus.Read(addr); v=SRL(v); bus.Write(addr,v);} return 16;
+
+        case 0x3F: A=SRL(A); return 8;
+
+    }
+
+ 
+
+    // --- BIT 40–7F, RES 80–BF, SET C0–FF ---
+
+    if (cbOp >= 0x40 && cbOp <= 0x7F) {
+
+        int bit = (cbOp - 0x40) / 8;
+
+        int regIndex = (cbOp - 0x40) % 8;
+
+        return BitOperation(bit, regIndex);
+
+    }
+
+    if (cbOp >= 0x80 && cbOp <= 0xBF) {
+
+        int bit = (cbOp - 0x80) / 8;
+
+        int regIndex = (cbOp - 0x80) % 8;
+
+        return ResOperation(bit, regIndex);
+
+    }
+
+    if (cbOp >= 0xC0 && cbOp <= 0xFF) {
+
+        int bit = (cbOp - 0xC0) / 8;
+
+        int regIndex = (cbOp - 0xC0) % 8;
+
+        return SetOperation(bit, regIndex);
+
+    }
+
+ 
+
+    Console.WriteLine($"Unhandled CB opcode {cbOp:X2} at PC={PC-1:X4}");
+
+    Environment.Exit(1);
+
+    return 0;
+
+}    void LD_HL_SP_e8 () {
       // MSB (most significant bit) -> the leftmost bit
       // MSB = 0 -> non-negative
       // MSB = 1 -> negative
@@ -847,7 +1198,7 @@ namespace GB {
                                   if (take) PC = a;
                                   return take ? 16: 12;
                                 }
-         /*PREFIX*/case 0xCB: Console.WriteLine($"0x{opCode:X2} not implemented!"); Environment.Exit(1);  return 4;
+         /*PREFIX*/case 0xCB: return ExecuteCB(bus.Read(PC++));
          /*CALL Z*/  case 0xCC:  {
                                    ushort a = fetchImm16();
                                    bool take = isFlagSet(FLAG.Z);
@@ -979,7 +1330,16 @@ namespace GB {
          /*ILLEGAL_FC*/case 0xFC: return 4;
          /*ILLEGAL_FD*/case 0xFD: return 4;
          /*CP A n8 */    case 0xFE: proc_CP_A_r8(fetchImm8());  return 8;
-         /*RST 38*/   case 0xFF: proc_RST(0x0038); return 16; // this is known to be buggy!
+         /*RST 38*/   case 0xFF: {
+                                  // proc_RST(0x0038); 
+                                  ushort retAddr = PC;
+                                  SP--;
+                                  bus.Write(SP, (byte)(retAddr >> 8));
+                                  SP--;
+                                  bus.Write(SP, (byte)(retAddr & 0xFF));
+                                  PC = 0x0038;
+                                   return 16; // this is known to be buggy!
+                                 }
          default: Console.WriteLine($"0x{opCode:X2} not implemented!"); Environment.Exit(1); return 0;
        }
      }
