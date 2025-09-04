@@ -584,7 +584,7 @@ namespace GB {
          /*CPL*/   case 0x2F: setFlag(FLAG.N, true); setFlag(FLAG.H, true);   return 4;
          /*JR NC e8*/    case 0x30: return proc_JR_COND(!isFlagSet(FLAG.C));
          /*LD SP, n16 */    case 0x31:  SP = fetchImm16(); 
-                                        Console.WriteLine($"LD SP, {SP:X4}");
+                                        // Console.WriteLine($"LD SP, {SP:X4}");
                                         return 12;
          /*LD [HL-] A*/    case 0x32: bus.Write(r8sToUshort(H, L), A);
                                       decR8sAsUshort(ref H, ref L);
