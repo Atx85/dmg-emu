@@ -4,7 +4,13 @@ namespace GB {
 public class Cartridge {
   byte[] data;
   public byte Read(int addr) { 
-    return data[addr]; 
+    if (addr < data.Length) {
+      return data[addr];
+    }
+    if (addr < 0x8000) {
+      return data[addr % data.Length];
+    }
+    return 0xFF; 
   }
 
   public void load(string path) {
