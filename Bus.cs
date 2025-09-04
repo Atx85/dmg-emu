@@ -23,6 +23,8 @@ namespace GB {
       this.cartridge = cartridge;
     }
     public byte Read(int addr) {
+      addr &= 0xFFFF;
+//      Console.WriteLine($"Reading {addr}");
       if (addr < 0x8000 || (addr >= 0xA000 && addr <= 0xBFFF)) {
         return cartridge.Read(addr);
       } 
@@ -34,6 +36,7 @@ namespace GB {
     }
 
     public void Write(int addr, byte val) {
+      addr &= 0xFFFF;
       if (addr < 0x8000) {
         return;
       }

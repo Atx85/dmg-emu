@@ -317,16 +317,16 @@ namespace GB {
 
     void proc_PUSH_r16(byte h, byte l) {
       SP--;
-      bus.Write(SP, h);
-      SP--;
       bus.Write(SP, l);
-      Console.WriteLine($"PUSH: {h:X2}{l:X2} -> SP={SP:X4}");
+      SP--;
+      bus.Write(SP, h);
+      // Console.WriteLine($"PUSH: {h:X2}{l:X2} -> SP={SP:X4}");
     }
 
     void proc_POP_r16(ref byte h,ref byte l) {
       l = bus.Read(SP++);
       h = bus.Read(SP++);
-      Console.WriteLine($"POP: {h:X2}{l:X2} -> SP={SP:X4}");
+      // Console.WriteLine($"POP: {h:X2}{l:X2} -> SP={SP:X4}");
     }
 
     void proc_JP_COND_ADDR(bool cond, ushort addr) {
@@ -462,7 +462,12 @@ namespace GB {
     void LogCpuState() {
       string regs = $"A:{A:X2} F:{F:X2} B:{B:X2} C:{C:X2} D:{D:X2} E:{E:X2} H:{H:X2} L:{L:X2} SP:{SP:X4} PC:{PC:X4}";
         byte[] pcBuf = new byte[4];
-        for (int i = 0; i < 4; i++) pcBuf[i] = bus.Read((ushort)(PC + i));
+        for (int i = 0; i < 4; i++) {
+          if (PC < 0xFFFF){
+          int addr = (PC + i) & 0xFFFF;
+          pcBuf[i] = bus.Read(addr);
+          }
+        }
         string pcMem = $"PCMEM:{pcBuf[0]:X2},{pcBuf[1]:X2},{pcBuf[2]:X2},{pcBuf[3]:X2}";
         Console.WriteLine($"{regs} {pcMem}");
     }
@@ -487,7 +492,7 @@ namespace GB {
          opCode = bus.Read(PC++);
        }
 
-       Console.WriteLine($"Executing opcode {opCode:X2} at PC={PC -1:X4}, SP={SP:X4}");
+       //Console.WriteLine($"Executing opcode {opCode:X2} at PC={PC -1:X4}, SP={SP:X4}");
        int cycles = Execute(opCode);
        dbg.Update();
        dbg.Print();
@@ -833,7 +838,7 @@ namespace GB {
                                   return take ? 20 : 8;
                                 }
          /*RET*/   case 0xC9: 
-                Console.WriteLine($"RET: pc={PC-1:X4} -> SP={SP:X4}");
+                // Console.WriteLine($"RET: pc={PC-1:X4} -> SP={SP:X4}");
                                   proc_RET_COND(true);  return 16;
          /*JP Z*/    case 0xCA: {
                                   ushort a = fetchImm16();
@@ -852,7 +857,7 @@ namespace GB {
                                 //proc_CALL_COND_n16(true, fetchImm16());  
                                 ushort target = fetchImm16();
                                 ushort returnAddr = PC;
-      Console.WriteLine($"CALL: {target:X4} from {returnAddr:X4} -> SP={SP:X4}");
+      // Console.WriteLine($"CALL: {target:X4} from {returnAddr:X4} -> SP={SP:X4}");
                                 proc_PUSH_r16((byte)(returnAddr >> 8), (byte)(returnAddr & 0xFF));
                                 PC = target;
                                 return 24;
