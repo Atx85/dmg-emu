@@ -39,6 +39,8 @@ namespace GB {
         case 0xFF05: return timer.ReadTIMA();
         case 0xFF06: return timer.ReadTMA();
         case 0xFF07: return timer.ReadTAC();
+        case 0xFF01: return memory[addr]; // sb serial data
+        case 0xff02: return memory[addr]; // sc serial
       }
       if (addr == 0xFF44) return 0x90; // random number for testing
       return memory[addr];
@@ -62,6 +64,8 @@ namespace GB {
         case 0xFF05: timer.WriteTIMA(val); return;
         case 0xFF06: timer.WriteTMA(val) ; return;
         case 0xFF07: timer.WriteTAC(val) ; return;
+        case 0xFF01: memory[addr] = val; return; // sb
+        case 0xFF02: memory[addr] = val; return; // sc
       }
       memory[addr] = val;
     }
