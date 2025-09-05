@@ -662,7 +662,7 @@ private int ExecuteCB(byte cbOp) {
 
         case 0x15: proc_RL_r8(ref L,false); return 8;
 
-        case 0x16: addr=r8sToUshort(H,L); { byte v=bus.Read(addr); proc_RL_r8(ref v,false); bus.Write(addr,v);} return 16;
+        case 0x16: addr=r8sToUshort(H,L); { byte v=bus.Read(addr); proc_RL_r8(ref v,true); bus.Write(addr,v);} return 16;
 
         case 0x17: proc_RL_r8(ref A,true); return 8;
 
@@ -682,7 +682,7 @@ private int ExecuteCB(byte cbOp) {
 
         case 0x1D: proc_RR_r8(ref L,false); return 8;
 
-        case 0x1E: addr=r8sToUshort(H,L); { byte v=bus.Read(addr); proc_RR_r8(ref v,false); bus.Write(addr,v);} return 16;
+        case 0x1E: addr=r8sToUshort(H,L); { byte v=bus.Read(addr); proc_RR_r8(ref v,true); bus.Write(addr,v);} return 16;
 
         case 0x1F: proc_RR_r8(ref A,true); return 8;
 
