@@ -18,9 +18,12 @@ namespace GB {
   public class Bus {
     Cartridge cartridge;
     byte[] memory;
+    public Timer timer;
+
     public Bus(ref Cartridge cartridge) {
       memory = new byte[0xFFFF + 1];
       this.cartridge = cartridge;
+      timer = new Timer(this);
     }
     public byte Read(int addr) {
       addr &= 0xFFFF;
@@ -30,6 +33,12 @@ namespace GB {
       } 
       if (addr >= 0xE000 && addr <= 0xFDFF) {
         return memory[addr - 0x2000];
+      }
+      switch (addr) {
+        case 0xFF04: return timer.ReadDIV();
+        case 0xFF05: return timer.ReadTIMA();
+        case 0xFF06: return timer.ReadTMA();
+        case 0xFF07: return timer.ReadTAC();
       }
       if (addr == 0xFF44) return 0x90; // random number for testing
       return memory[addr];
@@ -47,6 +56,12 @@ namespace GB {
       if (addr >= 0xE000 && addr <= 0xFDFF) {
         memory[addr - 0x2000] = val;
         return;
+      }
+      switch (addr) {
+        case 0xFF04: timer.WriteDIV(val) ; return;
+        case 0xFF05: timer.WriteTIMA(val); return;
+        case 0xFF06: timer.WriteTMA(val) ; return;
+        case 0xFF07: timer.WriteTAC(val) ; return;
       }
       memory[addr] = val;
     }

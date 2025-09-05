@@ -39,7 +39,17 @@ namespace GB {
         }
       }
     }
+    public byte ReadDIV() => (byte)(systemCounter >> 8);
+    public void WriteDIV(byte val) { systemCounter = 0; }
+  
+    public byte ReadTIMA() => bus.Read(0xFF05);
+    public void WriteTIMA(byte val) => bus.Write(0xFF05, val);
 
+    public byte ReadTMA() => bus.Read(0xFF06);
+    public void WriteTMA(byte val) => bus.Write(0xFF06, val);
+   
+    public byte ReadTAC() => bus.Read(0xFF07);
+    public void WriteTAC(byte val) => bus.Write(0xFF07, val);
     private void IncrementTIMA() {
       byte tima = bus.Read(0xFF05);
       if (tima == 0xFF) {
