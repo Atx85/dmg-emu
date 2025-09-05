@@ -860,8 +860,8 @@ private int ExecuteCB(byte cbOp) {
 
        //Console.WriteLine($"Executing opcode {opCode:X2} at PC={PC -1:X4}, SP={SP:X4}");
        int cycles = Execute(opCode);
-       dbg.Update();
-       dbg.Print();
+        dbg.Update();
+        dbg.Print();
        LogCpuState();
        return cycles;
      }
@@ -947,7 +947,10 @@ private int ExecuteCB(byte cbOp) {
                                 return 4;
          /*DEC L*/   case 0x2D: proc_DEC_r8(ref L);  return 4;
          /*LD L, n8*/    case 0x2E: L = fetchImm8(); return 8;
-         /*CPL*/   case 0x2F: setFlag(FLAG.N, true); setFlag(FLAG.H, true);   return 4;
+         /*CPL*/   case 0x2F: 
+                            A = (byte)~A;
+                            setFlag(FLAG.N, true); 
+                            setFlag(FLAG.H, true);   return 4;
          /*JR NC e8*/    case 0x30: return proc_JR_COND(!isFlagSet(FLAG.C));
          /*LD SP, n16 */    case 0x31:  SP = fetchImm16(); 
                                         // Console.WriteLine($"LD SP, {SP:X4}");
@@ -1362,7 +1365,7 @@ private int ExecuteCB(byte cbOp) {
          /*ILLEGAL_FD*/case 0xFD: return 4;
          /*CP A n8 */    case 0xFE: proc_CP_A_r8(fetchImm8());  return 8;
          /*RST 38*/   case 0xFF: {
-                                  // proc_RST(0x0038); 
+                                 proc_RST(0x0038); 
                                  // ushort retAddr = PC;
                                  // SP--;
                                  // bus.Write(SP, (byte)(retAddr >> 8));
