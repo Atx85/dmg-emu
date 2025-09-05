@@ -860,8 +860,6 @@ private int ExecuteCB(byte cbOp) {
 
        //Console.WriteLine($"Executing opcode {opCode:X2} at PC={PC -1:X4}, SP={SP:X4}");
        int cycles = Execute(opCode);
-        dbg.Update();
-        dbg.Print();
        LogCpuState();
        return cycles;
      }
