@@ -15,10 +15,9 @@ class Dbg {
       msg = $"{msg}{c}";
       bus.Write(0xFF02, 0);
 
-      if (c== '\n') {
+      //if (c== '\n') {
         Console.WriteLine($"DBG: {msg.TrimEnd()}");
-        msg = "";
-      }
+     //}
     }
   }
 

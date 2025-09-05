@@ -84,7 +84,8 @@ namespace GB {
        byte flags = bus.Read(0xFF0F);
        int pending = ie & flags;
 
-       if (IME && pending != 0) {
+       if (pending != 0) {
+         if (IME) {
          IME = false;
 
          int bit = 0;
@@ -99,7 +100,11 @@ namespace GB {
          PC = (ushort)(0x0040 + 8 * bit);
 
          return 20; // 20 cycles on real hardware (~5 m-cycles consumed
+       } else if (isHalted) { 
+         isHalted = false;
        }
+       }
+       
        return 0; // no interrupt handled
      }
 
@@ -840,7 +845,7 @@ private int ExecuteCB(byte cbOp) {
      public int Step () {
        if (first) {
          first = false;
-       LogCpuState();
+       // LogCpuState();
        }
 
        if (eiPending) {
@@ -852,15 +857,14 @@ private int ExecuteCB(byte cbOp) {
        if (isHalted) return 4;
        byte opCode;
        if (haltBug) {
-        opCode = bus.Read(PC++);
+        opCode = bus.Read(PC);
         haltBug = false;
        } else {
          opCode = bus.Read(PC++);
        }
-
        //Console.WriteLine($"Executing opcode {opCode:X2} at PC={PC -1:X4}, SP={SP:X4}");
        int cycles = Execute(opCode);
-       LogCpuState();
+       // LogCpuState();
        return cycles;
      }
 

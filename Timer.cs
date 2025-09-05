@@ -64,6 +64,7 @@ namespace GB {
     public void WriteTAC(byte val) {tac = val; } 
     private void IncrementTIMA() {
       if (tima == 0xFF) {
+        tima = 0x00;
         overflowPending = true;
         overflowDelay = 1;
       } else {
