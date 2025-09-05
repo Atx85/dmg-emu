@@ -1,0 +1,5 @@
+namespace GB {
+  class Ppu {
+
+  }
+}

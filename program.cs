@@ -14,7 +14,7 @@ public class Program
    // new Gameboy("./roms/01-special.gb");
    // new Gameboy("./roms/05-op rp.gb");
   // new Gameboy("./roms/rom.gb");
-new Gameboy("./roms/11-op a,(hl).gb");
+new Gameboy("./roms/dmg-acid2.gb");
   }
 }
 

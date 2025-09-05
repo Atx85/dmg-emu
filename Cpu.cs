@@ -7,7 +7,6 @@ namespace GB {
   public class Cpu
   {
     Bus bus;
-    Dbg dbg;
     byte A; 
     byte F; 
     byte B; 
@@ -111,7 +110,6 @@ namespace GB {
 
      public Cpu (Bus bus) {
        this.bus = bus;
-       dbg = new Dbg(ref bus);
        PC = 0x0100;
        A = 0x01;
        F = 0xB0;
