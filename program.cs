@@ -15,9 +15,20 @@ public class Program
     // new Gameboy("./roms/01-special.gb");
     // new Gameboy("./roms/05-op rp.gb");
     // new Gameboy("./roms/rom.gb");
-    //var gb = new Gameboy("./roms/dmg-acid2.gb");
-    var gb = new Gameboy();
-    TestPpu(gb);
+    var gb = new Gameboy("./roms/dmg-acid2.gb");
+    // var gb = new Gameboy();
+    // TestPpu(gb);
+    var display = new GBDisplay(pixelSize: 4);
+    gb.ppu.OnFrameReady += display.Update;
+
+    GLib.Timeout.Add(1, () =>
+    {
+        // advance ~1000 CPU cycles per tick
+        gb.TickCycles(1000);
+        return true; // repeat
+    });
+
+    display.Start();
   }
 
 
