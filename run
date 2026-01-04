@@ -1,1 +1,1 @@
-mcs -pkg:gtk-sharp-2.0  -pkg:mono-cairo program.cs Timer.cs Bus.cs Dbg.cs Cartridge.cs Gameboy.cs Cpu.cs && mono ./program.exe
+mcs -pkg:gtk-sharp-2.0  -pkg:mono-cairo program.cs Timer.cs Bus.cs Ppu.cs  Dbg.cs Cartridge.cs Gameboy.cs Cpu.cs GBDisplay.cs && mono ./program.exe

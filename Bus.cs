@@ -14,60 +14,98 @@ FF00	FF7F	I/O Registers
 FF80	FFFE	High RAM (HRAM)	
 FFFF	FFFF	Interrupt Enable register (IE)	
 */
+
 namespace GB {
-  public class Bus {
-    Cartridge cartridge;
-    byte[] memory;
-    public Timer timer;
+    public class Bus {
+        public Cartridge cartridge;
+        byte[] memory;
+        byte[] vram;
+        public byte[] OAMRam;
+        public Timer timer;
 
-    public Bus(ref Cartridge cartridge) {
-      memory = new byte[0xFFFF + 1];
-      this.cartridge = cartridge;
-      timer = new Timer(this);
-    }
-    public byte Read(int addr) {
-      addr &= 0xFFFF;
-//      Console.WriteLine($"Reading {addr}");
-      if (addr < 0x8000 || (addr >= 0xA000 && addr <= 0xBFFF)) {
-        return cartridge.Read(addr);
-      } 
-      if (addr >= 0xE000 && addr <= 0xFDFF) {
-        return memory[addr - 0x2000];
-      }
-      switch (addr) {
-        case 0xFF04: return timer.ReadDIV();
-        case 0xFF05: return timer.ReadTIMA();
-        case 0xFF06: return timer.ReadTMA();
-        case 0xFF07: return timer.ReadTAC();
-        case 0xFF01: return memory[addr]; // sb serial data
-        case 0xff02: return memory[addr]; // sc serial
-      }
-      if (addr == 0xFF44) return 0x90; // random number for testing
-      return memory[addr];
-    }
+        public Bus(ref Cartridge cartridge) {
+            memory = new byte[0x10000];   // 0x0000–0xFFFF
+            vram = new byte[0x2000];      // 8 KB VRAM
+            OAMRam = new byte[160];       // 160 bytes OAM
+            this.cartridge = cartridge;
+            timer = new Timer(this);
+        }
 
-    public void Write(int addr, byte val) {
-      addr &= 0xFFFF;
-      if (addr < 0x8000) {
-        return;
-      }
-      if (addr >= 0xA000 && addr <= 0xBFFF){
-        // cartridge.Write(addr, val); // writing to cartridge rom
-        return;
-      }
-      if (addr >= 0xE000 && addr <= 0xFDFF) {
-        memory[addr - 0x2000] = val;
-        return;
-      }
-      switch (addr) {
-        case 0xFF04: timer.WriteDIV(val) ; return;
-        case 0xFF05: timer.WriteTIMA(val); return;
-        case 0xFF06: timer.WriteTMA(val) ; return;
-        case 0xFF07: timer.WriteTAC(val) ; return;
-        case 0xFF01: memory[addr] = val; return; // sb
-        case 0xFF02: memory[addr] = val; return; // sc
-      }
-      memory[addr] = val;
+        // in Bus
+        public byte LY { get; private set; } = 0;
+        public void TickLY() {
+            LY++;
+            if (LY > 153) LY = 0; // 144 visible + 10 VBlank lines
+        }
+
+        public byte Read(int addr) {
+            addr &= 0xFFFF;
+
+            if (addr < 0x8000 || (addr >= 0xA000 && addr <= 0xBFFF)) {
+                return cartridge.Read(addr);
+            }
+
+            if (addr >= 0x8000 && addr <= 0x9FFF) {
+                int vramAddr = addr & 0x1FFF;
+                return vram[vramAddr];
+            }
+
+            if (addr >= 0xE000 && addr <= 0xFDFF) {
+                return memory[addr - 0x2000];
+            }
+
+            if (addr >= 0xFE00 && addr <= 0xFE9F) {
+                return OAMRam[addr - 0xFE00];
+            }
+
+            // I/O registers simplified
+            switch (addr) {
+                case 0xFF04: return timer.ReadDIV();
+                case 0xFF05: return timer.ReadTIMA();
+                case 0xFF06: return timer.ReadTMA();
+                case 0xFF07: return timer.ReadTAC();
+                case 0xFF01:
+                case 0xFF02: return memory[addr];
+                case 0xFF44: return LY;//0x90; // LY test value
+            }
+
+            return memory[addr];
+        }
+
+        public void Write(int addr, byte val) {
+            addr &= 0xFFFF;
+
+            if (addr < 0x8000) return; // ROM write ignored
+
+            if (addr >= 0x8000 && addr <= 0x9FFF) {
+                vram[addr & 0x1FFF] = val;
+                return;
+            }
+
+            if (addr >= 0xE000 && addr <= 0xFDFF) {
+                memory[addr - 0x2000] = val;
+                return;
+            }
+
+            if (addr >= 0xFE00 && addr <= 0xFE9F) {
+                OAMRam[addr - 0xFE00] = val;
+                return;
+            }
+
+            // I/O registers simplified
+            switch (addr) {
+                case 0xFF04: timer.WriteDIV(val); return;
+                case 0xFF05: timer.WriteTIMA(val); return;
+                case 0xFF06: timer.WriteTMA(val); return;
+                case 0xFF07: timer.WriteTAC(val); return;
+                case 0xFF01:
+                case 0xFF02:
+                    memory[addr] = val;
+                    return;
+            }
+
+            memory[addr] = val;
+        }
     }
-  }
 }
+

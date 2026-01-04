@@ -4,7 +4,7 @@ using System.Collections.Generic;
 
 namespace GB {
 
-  struct Pixel {
+  public struct Pixel {
     private ushort _data;
 
     public byte Color {
@@ -50,12 +50,13 @@ namespace GB {
     }
   }
 
-  class Ppu {
+  public class Ppu {
     Bus bus;
     int dot;
+    public delegate void FrameReadyHandler(Pixel[,] framebuffer);
+    public event FrameReadyHandler OnFrameReady;
     int mode;
-    List<Pixel> BackgroundPixels;
-    List<Pixel> SpritePixels;
+    public Pixel[,] Framebuffer;
     bool isBit(byte val, ushort i) => i < 8 && (val & (1 << i)) != 0;
     // LCDC - 0xFF40
     byte LCDC => bus.Read(0xFF40);
@@ -75,7 +76,7 @@ namespace GB {
     byte STAT => bus.Read(0xFF41);
     byte SCY => bus.Read(0xFF42);
     byte SCX => bus.Read(0xFF43);
-    byte LY => bus.Read(0xFF44); // LCD Y coord
+    byte LY => bus.LY;//bus.Read(0xFF44); // LCD Y coord
     byte LYC => bus.Read(0xFF45); 
     byte BGP(int id) {
       if (id < 0 || id > 3)
@@ -99,53 +100,116 @@ namespace GB {
     byte WX => bus.Read(0xFF4A);
     byte WY => bus.Read(0xFF4B);
     public Ppu(Bus _bus) {
+      Framebuffer = new Pixel[144, 160];
       bus = _bus;
       dot = 0;
       mode = 2;
-    }
+   }
+
     // Find up to 10 sprites for this line
     void Mode2 () {
       if (dot > 80) mode = 3; 
     }
 
     // Render background, window, sprites
-    void Mode3() {
-      ushort startAddr = (ushort)BgTileMapArea;      
 
-      bool usingWindow = IsWindowEnabled &&
-        LY >= WY &&
-        dot >= WX - 7;
+    void Mode3()
+    {
 
-      if (usingWindow) {
-        int windowX = dot - (WX - 7);
-        int tileX = windowX / 8;
-        int tileY = (LY - WY) / 8;
-        // fetch from window tilemap
-      } else {
-        int bgX = (SCX + dot) % 256;
-        int bgY = (SCY + LY) % 256;
-        int tileX = bgX / 8;
-        int tileY = bgY / 8;
-        // fetch from background tilemap
-      }
-      byte tilemapAddress = startAddr + tileY * 32 + tileX;
-      byte tileId = bus.Read(tilemapAddress);
-      ushort tileDataAddress = tileDataBase + tileID * 16 + tileRow * 2;
+        int pixelIndex = dot - 80;
+        if (pixelIndex < 0 || pixelIndex >= 160 || LY >= 144) return;
+        // BG disabled → white (DMG behavior)
+        if (!isBit(LCDC, 0))
+        {
+            Framebuffer[LY, pixelIndex] = new Pixel(0, 0, 0, false);
+            return;
+        }
+        bool usingWindow =
+            IsWindowEnabled &&
+            LY >= WY &&
+            dot >= WX - 7;
+
+        int pixelX, pixelY;
+
+        if (usingWindow)
+        {
+            pixelX = pixelIndex - (WX - 7);
+            pixelY = LY - WY;
+        }
+        else
+        {
+            pixelX = (SCX + pixelIndex) & 0xFF;
+            pixelY = (SCY + LY) & 0xFF;
+        }
+
+        int tileX = pixelX >> 3;
+        int tileY = pixelY >> 3;
+
+        ushort tileMapAddr = (ushort)(
+            (usingWindow ? WindowTileMapArea : BgTileMapArea) +
+            tileY * 32 + tileX
+        );
+
+        byte tileId = bus.Read(tileMapAddr);
+
+        int tileIndex = BgWinAddrMode
+            ? tileId
+            : (int)(sbyte)tileId;
+
+        ushort tileDataBase = BgWinAddrMode ? (ushort)0x8000 : (ushort)0x8800;
+
+        ushort tileAddr = (ushort)(
+            tileDataBase + tileIndex * 16
+        );
+
+        int row = pixelY & 7;
+        byte lo = bus.Read((ushort)(tileAddr + row * 2));
+        byte hi = bus.Read((ushort)(tileAddr + row * 2 + 1));
+
+        int bit = 7 - (pixelX & 7);
+        int colorId =
+            ((hi >> bit) & 1) << 1 |
+            ((lo >> bit) & 1);
+
+        byte finalColor = BGP(colorId);
+        Pixel px = new Pixel(finalColor, 0, 0, false);
+        Framebuffer[LY, pixelIndex] = px;
     }
-
     // Wait for next line; CPU can access VRAM/OAM
     void Mode0() {}
 
     // No rendering; frame is done
-    void Mode1() {}
+    void Mode1() {
+      // VBlank mode; frame is done
+        OnFrameReady?.Invoke(Framebuffer);
+    }
 
-    public void Step() {
-      switch (mode) {
-        case 0: Mode0(); break;
-        case 1: Mode1(); break;
-        case 2: Mode2(); break;
-        case 3: Mode3(); break;
-      }
+
+    public void Tick() {
+        switch (mode) {
+            case 0: Mode0(); break;
+            case 1: Mode1(); break;
+            case 2: Mode2(); break;
+            case 3: Mode3(); break;
+        }
+
+        dot++;
+
+        if (dot >= 456) {
+            dot = 0;
+            bus.TickLY();
+
+            if (LY == 144) // first VBlank line
+            {
+                mode = 1;
+                Console.WriteLine("invoking fb");
+                OnFrameReady?.Invoke(Framebuffer);
+            }
+            else if (LY < 144)
+            {
+                mode = 2; // next line Mode2
+            }
+        }
     }
   }
 }
