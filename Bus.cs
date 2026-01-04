@@ -39,7 +39,7 @@ namespace GB {
         }
         public void TickLY() {
             LY++;
-            if (LY > 153) LY = 0; // 144 visible + 10 VBlank lines
+            // if (LY > 153) LY = 0; // 144 visible + 10 VBlank lines
         }
 
         public byte Read(int addr) {
