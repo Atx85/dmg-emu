@@ -9,7 +9,8 @@ public class GBDisplay
     private DrawingArea canvas;
     private Pixel[,] framebuffer;
     private int pixelSize = 3;
-
+    DateTime lastFrame = DateTime.MinValue;
+    readonly TimeSpan frameTime = TimeSpan.FromSeconds(1.0 / 59.73);
     // DMG palette colors
     private static readonly Color[] Colors = new Color[]
     {
@@ -40,10 +41,17 @@ public class GBDisplay
         Application.Run();
     }
 
-    public void Update(Pixel[,] framebuffer)
+ 
+    public void Update(Pixel[,] fb)
     {
-        this.framebuffer = framebuffer;
-        canvas.QueueDraw(); // trigger redraw
+        var now = DateTime.UtcNow;
+
+        if (now - lastFrame < frameTime)
+            return; // skip drawing to maintain real framerate
+
+        lastFrame = now;
+        framebuffer = fb;
+        canvas.QueueDraw();
     }
 
     private void DrawPixel(Context g, int x, int y, Color color)

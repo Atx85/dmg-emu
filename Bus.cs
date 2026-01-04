@@ -33,6 +33,10 @@ namespace GB {
 
         // in Bus
         public byte LY { get; private set; } = 0;
+        public void ResetLY()
+        {
+            LY = 0;
+        }
         public void TickLY() {
             LY++;
             if (LY > 153) LY = 0; // 144 visible + 10 VBlank lines

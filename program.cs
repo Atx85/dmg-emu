@@ -21,11 +21,28 @@ public class Program
     var display = new GBDisplay(pixelSize: 4);
     gb.ppu.OnFrameReady += display.Update;
 
+
+
+    
+    const double CPU_HZ = 4194304.0;
+    DateTime last = DateTime.UtcNow;
+    double cycleRemainder = 0;
+
     GLib.Timeout.Add(1, () =>
     {
-        // advance ~1000 CPU cycles per tick
-        gb.TickCycles(1000);
-        return true; // repeat
+        var now = DateTime.UtcNow;
+        double delta = (now - last).TotalSeconds;
+        last = now;
+
+        double cycles = delta * CPU_HZ + cycleRemainder;
+        int whole = (int)cycles;
+        cycleRemainder = cycles - whole;
+
+        if (whole > 70224)
+            whole = 70224;
+
+        gb.TickCycles(whole);
+        return true;
     });
 
     display.Start();

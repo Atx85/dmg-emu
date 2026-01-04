@@ -53,6 +53,7 @@ namespace GB {
   public class Ppu {
     Bus bus;
     int dot;
+    bool frameSignaled = false;
     public delegate void FrameReadyHandler(Pixel[,] framebuffer);
     public event FrameReadyHandler OnFrameReady;
     int mode;
@@ -108,7 +109,7 @@ namespace GB {
 
     // Find up to 10 sprites for this line
     void Mode2 () {
-      if (dot > 80) mode = 3; 
+      if (dot == 80) mode = 3; 
     }
 
     // Render background, window, sprites
@@ -174,19 +175,33 @@ namespace GB {
         byte finalColor = BGP(colorId);
         Pixel px = new Pixel(finalColor, 0, 0, false);
         Framebuffer[LY, pixelIndex] = px;
+        if (dot == 252) mode = 0;
     }
     // Wait for next line; CPU can access VRAM/OAM
-    void Mode0() {}
+
+    void Mode0()
+    {
+  
+    }
 
     // No rendering; frame is done
-    void Mode1() {
-      // VBlank mode; frame is done
-        OnFrameReady?.Invoke(Framebuffer);
+
+ 
+    void Mode1()
+    {
+        if (!frameSignaled)
+        {
+            frameSignaled = true;
+            OnFrameReady?.Invoke(Framebuffer);
+        }
     }
 
 
-    public void Tick() {
-        switch (mode) {
+
+    public void Tick()
+    {
+        switch (mode)
+        {
             case 0: Mode0(); break;
             case 1: Mode1(); break;
             case 2: Mode2(); break;
@@ -195,19 +210,24 @@ namespace GB {
 
         dot++;
 
-        if (dot >= 456) {
+        if (dot >= 456)
+        {
             dot = 0;
             bus.TickLY();
 
-            if (LY == 144) // first VBlank line
+            if (bus.LY == 144)
             {
-                mode = 1;
-                Console.WriteLine("invoking fb");
-                OnFrameReady?.Invoke(Framebuffer);
+                mode = 1; // enter VBlank
+                frameSignaled = false;
             }
-            else if (LY < 144)
+            else if (bus.LY > 153)
             {
-                mode = 2; // next line Mode2
+                bus.ResetLY();
+                mode = 2; // new frame
+            }
+            else
+            {
+                mode = 2;
             }
         }
     }

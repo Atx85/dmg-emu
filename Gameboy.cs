@@ -29,18 +29,24 @@ public class Gameboy
     /// <summary>
     /// Tick the Game Boy for n CPU cycles
     /// </summary>
+
     public void TickCycles(int cycles)
     {
-        while (cycles > 0)
+        int remaining = cycles;
+
+        while (remaining > 0)
         {
-            int ticked = cpu.Step();  // execute 1 instruction, returns cycles it took
-            // ppu.Tick(ticked);         // advance PPU by same number of cycles
-            ppu.Tick();         // advance PPU by same number of cycles
-            for (int c = 0; c < ticked; c++)
-                bus.timer.Tick(1);    // advance timers
-            cycles -= ticked;
+            int used = cpu.Step();    // returns cycles used
+            remaining -= used;
+
+            for (int i = 0; i < used; i++)
+            {
+                ppu.Tick();
+                bus.timer.Tick(1);
+            }
         }
     }
+
 }
 
 }
