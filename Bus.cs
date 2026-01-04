@@ -42,6 +42,15 @@ namespace GB {
             // if (LY > 153) LY = 0; // 144 visible + 10 VBlank lines
         }
 
+        public void RequestInterrupt(int id)
+        {
+          if (id < 0 || id > 4)
+            throw new ArgumentOutOfRangeException(nameof(id), "Interrupt ID must be 0–4");
+
+          // Set the bit in the IF register (0xFF0F)
+          memory[0xFF0F] |= (byte)(1 << id);
+        }
+
         public byte Read(int addr) {
             addr &= 0xFFFF;
 

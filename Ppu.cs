@@ -6,9 +6,9 @@ namespace GB {
 
   public struct Sprite
   {
-      public int x, y;
-      public byte tile;
-      public byte attr;
+    public int x, y;
+    public byte tile;
+    public byte attr;
   }
   public struct Pixel {
     private ushort _data;
@@ -112,232 +112,278 @@ namespace GB {
       bus = _bus;
       dot = 0;
       mode = 2;
-   }
+    }
 
 
+    void SetSTATMode(int newMode)
+    {
+      // clear bits 0-1
+      byte stat = (byte)(STAT & 0xFC);
+      stat |= (byte)(newMode & 0x3);
+      bus.Write(0xFF41, stat);
+    }
     void ScanSpritesForLine()
     {
-        scanlineSprites.Clear();
+      scanlineSprites.Clear();
 
-        int spriteHeight = ObjSize == 2 ? 16 : 8;
+      int spriteHeight = ObjSize == 2 ? 16 : 8;
 
-        for (int i = 0; i < 40 && scanlineSprites.Count < 10; i++)
+      for (int i = 0; i < 40 && scanlineSprites.Count < 10; i++)
+      {
+        ushort addr = (ushort)(0xFE00 + i * 4);
+        int y = bus.Read(addr) - 16;
+        int x = bus.Read((ushort)(addr + 1)) - 8;
+        byte tile = bus.Read((ushort)(addr + 2));
+        byte attr = bus.Read((ushort)(addr + 3));
+
+        if (LY >= y && LY < y + spriteHeight)
         {
-            ushort addr = (ushort)(0xFE00 + i * 4);
-            int y = bus.Read(addr) - 16;
-            int x = bus.Read((ushort)(addr + 1)) - 8;
-            byte tile = bus.Read((ushort)(addr + 2));
-            byte attr = bus.Read((ushort)(addr + 3));
-
-            if (LY >= y && LY < y + spriteHeight)
-            {
-                scanlineSprites.Add(new Sprite { x = x, y = y, tile = tile, attr = attr });
-            }
+          scanlineSprites.Add(new Sprite { x = x, y = y, tile = tile, attr = attr });
         }
+      }
     }
 
     // Find up to 10 sprites for this line
+
     void Mode2()
     {
-        if (dot == 0)
-            ScanSpritesForLine();
+      if (dot == 0)
+      {
+        ScanSpritesForLine();
+        mode = 2;
+        SetSTATMode(mode);
+        CheckSTATInterrupt(mode);
+      }
 
-        if (dot == 80)
-            mode = 3;
+      if (dot == 80)
+        mode = 3; // enter drawing
     }
+    void CheckSTATInterrupt(int mode)
+    {
+      byte stat = bus.Read(0xFF41);
+      bool trigger = false;
 
+      // Mode interrupt
+      switch(mode)
+      {
+        case 0: if ((stat & 0x08) != 0) trigger = true; break; // HBlank
+        case 1: if ((stat & 0x10) != 0) trigger = true; break; // VBlank
+        case 2: if ((stat & 0x20) != 0) trigger = true; break; // OAM
+      }
+
+      // LYC=LY coincidence
+      if (bus.LY == LYC)
+      {
+        stat |= 0x04; // set coincidence flag
+        if ((stat & 0x40) != 0) trigger = true;
+      }
+      else
+      {
+        stat &= 0xFB; // clear coincidence flag
+      }
+
+      bus.Write(0xFF41, stat);
+
+      if (trigger)
+        bus.RequestInterrupt(1); // 1 = LCD STAT
+    }
 
     Pixel FetchBgPixel(int pixelIndex)
     {
-        if (!isBit(LCDC, 0))
-            return new Pixel(0, 0, 0, false);
+      if (!isBit(LCDC, 0))
+        return new Pixel(0, 0, 0, false);
 
-        bool usingWindow =
-            IsWindowEnabled &&
-            LY >= WY &&
-            pixelIndex >= WX - 7;
+      bool usingWindow =
+        IsWindowEnabled &&
+        LY >= WY &&
+        pixelIndex >= WX - 7;
 
-        int pixelX, pixelY;
+      int pixelX, pixelY;
 
-        if (usingWindow)
-        {
-            pixelX = pixelIndex - (WX - 7);
-            pixelY = LY - WY;
-        }
-        else
-        {
-            pixelX = (SCX + pixelIndex) & 0xFF;
-            pixelY = (SCY + LY) & 0xFF;
-        }
+      if (usingWindow)
+      {
+        pixelX = pixelIndex - (WX - 7);
+        pixelY = LY - WY;
+      }
+      else
+      {
+        pixelX = (SCX + pixelIndex) & 0xFF;
+        pixelY = (SCY + LY) & 0xFF;
+      }
 
-        int tileX = pixelX >> 3;
-        int tileY = pixelY >> 3;
+      int tileX = pixelX >> 3;
+      int tileY = pixelY >> 3;
 
-        ushort mapBase = (ushort)(usingWindow ? WindowTileMapArea : BgTileMapArea);
-        ushort tileMapAddr = (ushort)(mapBase + tileY * 32 + tileX);
+      ushort mapBase = (ushort)(usingWindow ? WindowTileMapArea : BgTileMapArea);
+      ushort tileMapAddr = (ushort)(mapBase + tileY * 32 + tileX);
 
-        byte tileId = bus.Read(tileMapAddr);
-        int tileIndex = BgWinAddrMode ? (int)tileId : (int)(sbyte)tileId;
-        ushort tileBase = BgWinAddrMode ? (ushort)0x8000 : (ushort)0x8800;
-        ushort tileAddr = (ushort)(tileBase + tileIndex * 16);
+      byte tileId = bus.Read(tileMapAddr);
+      int tileIndex = BgWinAddrMode ? (int)tileId : (int)(sbyte)tileId;
+      ushort tileBase = BgWinAddrMode ? (ushort)0x8000 : (ushort)0x8800;
+      ushort tileAddr = (ushort)(tileBase + tileIndex * 16);
 
-        int row = pixelY & 7;
-        byte lo = bus.Read((ushort)(tileAddr + row * 2));
-        byte hi = bus.Read((ushort)(tileAddr + row * 2 + 1));
+      int row = pixelY & 7;
+      byte lo = bus.Read((ushort)(tileAddr + row * 2));
+      byte hi = bus.Read((ushort)(tileAddr + row * 2 + 1));
 
-        int bit = 7 - (pixelX & 7);
-        int colorId = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
+      int bit = 7 - (pixelX & 7);
+      int colorId = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
 
-        return new Pixel(BGP(colorId), 0, 0, false);
+      return new Pixel(BGP(colorId), 0, 0, false);
     }
 
     bool TryFetchSpritePixel(int pixelIndex, Pixel bg, out Pixel result)
     {
-        foreach (var spr in scanlineSprites)
-        {
-            int sx = pixelIndex - spr.x;
-            if (sx < 0 || sx >= 8) continue;
+      foreach (var spr in scanlineSprites)
+      {
+        int sx = pixelIndex - spr.x;
+        if (sx < 0 || sx >= 8) continue;
 
-            int spriteHeight = ObjSize == 2 ? 16 : 8;
-            int sy = LY - spr.y;
-            if (sy < 0 || sy >= spriteHeight) continue;
+        int spriteHeight = ObjSize == 2 ? 16 : 8;
+        int sy = LY - spr.y;
+        if (sy < 0 || sy >= spriteHeight) continue;
 
-            bool xFlip = (spr.attr & 0x20) != 0;
-            bool yFlip = (spr.attr & 0x40) != 0;
+        bool xFlip = (spr.attr & 0x20) != 0;
+        bool yFlip = (spr.attr & 0x40) != 0;
 
-            int px = xFlip ? 7 - sx : sx;
-            int py = yFlip ? (spriteHeight - 1 - sy) : sy;
+        int px = xFlip ? 7 - sx : sx;
+        int py = yFlip ? (spriteHeight - 1 - sy) : sy;
 
-            byte tileIndex = spr.tile;
-            if (spriteHeight == 16)
-                tileIndex &= 0xFE;
+        byte tileIndex = spr.tile;
+        if (spriteHeight == 16)
+          tileIndex &= 0xFE;
 
-            ushort tileAddr = (ushort)(0x8000 + tileIndex * 16 + py * 2);
-            byte lo = bus.Read(tileAddr);
-            byte hi = bus.Read((ushort)(tileAddr + 1));
+        ushort tileAddr = (ushort)(0x8000 + tileIndex * 16 + py * 2);
+        byte lo = bus.Read(tileAddr);
+        byte hi = bus.Read((ushort)(tileAddr + 1));
 
-            int bit = 7 - px;
-            int colorId = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
+        int bit = 7 - px;
+        int colorId = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
 
-            if (colorId == 0)
-                continue;
+        if (colorId == 0)
+          continue;
 
-            bool behindBg = (spr.attr & 0x80) != 0;
-            if (behindBg && bg.Color != 0)
-                continue;
+        bool behindBg = (spr.attr & 0x80) != 0;
+        if (behindBg && bg.Color != 0)
+          continue;
 
-            int palette = (spr.attr >> 4) & 1;
-            byte finalColor = OBP((byte)palette, colorId);
+        int palette = (spr.attr >> 4) & 1;
+        byte finalColor = OBP((byte)palette, colorId);
 
-            result = new Pixel(finalColor, (byte)palette, 0, behindBg);
-            return true;
-        }
+        result = new Pixel(finalColor, (byte)palette, 0, behindBg);
+        return true;
+      }
 
-        result = new Pixel();
-        return false;
+      result = new Pixel();
+      return false;
     }
     // Render background, window, sprites
+
 
     void Mode3()
     {
       int pixelIndex = dot - 80;
       if (pixelIndex < 0 || pixelIndex >= 160 || LY >= 144)
-          return;
+        return;
 
       Pixel bg = FetchBgPixel(pixelIndex);
 
-      if (IsObjEnabled &&
-          TryFetchSpritePixel(pixelIndex, bg, out Pixel sprite))
-      {
-          Framebuffer[LY, pixelIndex] = sprite;
-      }
+      if (IsObjEnabled && TryFetchSpritePixel(pixelIndex, bg, out Pixel sprite))
+        Framebuffer[LY, pixelIndex] = sprite;
       else
+        Framebuffer[LY, pixelIndex] = bg;
+
+      if (pixelIndex == 159)
       {
-          Framebuffer[LY, pixelIndex] = bg;
+        mode = 0; // HBlank
+        SetSTATMode(mode);
+        CheckSTATInterrupt(mode);
       }
-
-      if (pixelIndex == 159) {
-          mode = 0;
-      }
-   }
-
+    }
     // Wait for next line; CPU can access VRAM/OAM
+
 
     void Mode0()
     {
-        // HBlank, just wait until 456 dots are reached.
-        // Optionally you can do DMA/OAM access here if needed.
-        if (dot >= 456)
-        {
-            dot = 0;
-            bus.TickLY();
+      if (dot >= 456)
+      {
+        dot = 0;
+        bus.TickLY();
 
-            if (bus.LY < 144)
-                mode = 2; // OAM scan next line
-            else
-                mode = 1; // VBlank
+        if (bus.LY < 144)
+        {
+          mode = 2; // OAM scan next line
         }
+        else
+        {
+          mode = 1; // VBlank
+          frameSignaled = false;
+        }
+
+        SetSTATMode(mode);
+        CheckSTATInterrupt(mode);
+      }
     }
     // No rendering; frame is done
 
     void Mode1()
     {
-        // Fire frame event once, when entering VBlank
-        if (!frameSignaled)
-        {
-            frameSignaled = true;
-            OnFrameReady?.Invoke(Framebuffer);
-        }
+      // Fire frame event once, when entering VBlank
+      if (!frameSignaled)
+      {
+        frameSignaled = true;
+        OnFrameReady?.Invoke(Framebuffer);
+      }
 
-        // Wait for the line to finish
-        if (dot >= 456)
+      // Wait for the line to finish
+      if (dot >= 456)
+      {
+        dot = 0;
+        bus.TickLY();  // increment LY
+        if (bus.LY > 153)
         {
-            dot = 0;
-            bus.TickLY();  // increment LY
-            if (bus.LY > 153)
-            {
-                bus.ResetLY();  // back to line 0
-                mode = 2;       // start OAM scan for new frame
-                frameSignaled = false;
-            }
+          bus.ResetLY();  // back to line 0
+          mode = 2;       // start OAM scan for new frame
+          frameSignaled = false;
         }
+      }
     }
 
 
 
     public void Tick()
     {
-        switch (mode)
-        {
-            case 0: Mode0(); break;
-            case 1: Mode1(); break;
-            case 2: Mode2(); break;
-            case 3: Mode3(); break;
-        }
+      switch (mode)
+      {
+        case 0: Mode0(); break;
+        case 1: Mode1(); break;
+        case 2: Mode2(); break;
+        case 3: Mode3(); break;
+      }
 
-        dot++;
-/*
-        if (dot >= 456)
-        {
-            dot = 0;
-            bus.TickLY();
+      dot++;
+      /*
+         if (dot >= 456)
+         {
+         dot = 0;
+         bus.TickLY();
 
-            if (bus.LY == 144)
-            {
-                mode = 1; // enter VBlank
-                frameSignaled = false;
-            }
-            else if (bus.LY > 153)
-            {
-                bus.ResetLY();
-                mode = 2; // new frame
-            }
-            else
-            {
-                mode = 2;
-            }
-        }
-        */
+         if (bus.LY == 144)
+         {
+         mode = 1; // enter VBlank
+         frameSignaled = false;
+         }
+         else if (bus.LY > 153)
+         {
+         bus.ResetLY();
+         mode = 2; // new frame
+         }
+         else
+         {
+         mode = 2;
+         }
+         }
+         */
     }
   }
 }
