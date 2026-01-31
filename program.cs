@@ -1,12 +1,10 @@
 using System;
 using System.IO;
 using System.Collections.Generic;
-using Gtk;
-using Cairo;
 using System.Reflection;
 using System.Runtime.InteropServices;
-
 using GB;
+
 public class Program
 {
   public static void Main(string[] args) {
@@ -18,24 +16,24 @@ public class Program
    var gb = new Gameboy("./roms/dmg-acid2.gb");
    // // var gb = new Gameboy();
    // // TestPpu(gb);
-    var display = new GBDisplay(pixelSize: 4);
+    IDisplay display;
+// #if GTK
+    display = new GBDisplay(pixelSize: 4, input: gb.bus.Joypad);
+///#else
+///    display = new GBDisplaySdl(pixelSize: 4, input: gb.bus.Joypad);
+///#endif
 // Give the display the PPU framebuffer
 display.SetFrameBuffer(gb.ppu.GetFrameBuffer());
 
 // Refresh display whenever a frame is ready
-gb.ppu.OnFrameReady += fb => display.Update(gb.ppu.GetFrameBuffer());  
+gb.ppu.OnFrameReady += fb => display.Update(fb);  
 
-const double CPU_HZ = 4194304.0;
-    DateTime last = DateTime.UtcNow;
+    const double CPU_HZ = 4194304.0;
     double cycleRemainder = 0;
 
-    GLib.Timeout.Add(1, () =>
+    display.RunLoop(deltaSeconds =>
     {
-        var now = DateTime.UtcNow;
-        double delta = (now - last).TotalSeconds;
-        last = now;
-
-        double cycles = delta * CPU_HZ + cycleRemainder;
+        double cycles = deltaSeconds * CPU_HZ + cycleRemainder;
         int whole = (int)cycles;
         cycleRemainder = cycles - whole;
 
@@ -43,13 +41,11 @@ const double CPU_HZ = 4194304.0;
             whole = 70224;
 
         gb.TickCycles(whole);
-        return true;
     });
-
-    display.Start();
   }
 
 
+// #if GTK
   static void TestPpu(Gameboy gb)
   {
     var ppu = gb.ppu;
@@ -82,6 +78,7 @@ const double CPU_HZ = 4194304.0;
     // Start GTK main loop
     display.Start();
   }
+// #endif
 }
 /*
 public static class FramebufferTest {

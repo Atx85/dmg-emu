@@ -22,10 +22,10 @@ public class Gameboy
         var sm = new PpuStateMachine(regs, ints, timing);
 
         var bg = new BackgroundRenderer(new BusMemoryAdapter(bus), regs, fb);
-        var sprite = new SpriteRenderer(new BusMemoryAdapter(bus), regs, fb);
         var window = new WindowRenderer(new BusMemoryAdapter(bus), regs, fb);
+        var sprite = new SpriteRenderer(new BusMemoryAdapter(bus), regs, fb);
 
-        ppu = new Ppu(sm, fb, bg, sprite, window);
+        ppu = new Ppu(sm, fb, bg, window, sprite);
         // ppu = new Ppu(bus);
     }
 
@@ -42,10 +42,10 @@ public class Gameboy
         var sm = new PpuStateMachine(regs, ints, timing);
 
         var bg = new BackgroundRenderer(new BusMemoryAdapter(bus), regs, fb);
-        var sprite = new SpriteRenderer(new BusMemoryAdapter(bus), regs, fb);
         var window = new WindowRenderer(new BusMemoryAdapter(bus), regs, fb);
+        var sprite = new SpriteRenderer(new BusMemoryAdapter(bus), regs, fb);
 
-        ppu = new Ppu(sm, fb, bg, sprite, window);
+        ppu = new Ppu(sm, fb, bg, window, sprite);
     }
 
     /// <summary>

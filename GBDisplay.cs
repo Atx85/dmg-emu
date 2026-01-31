@@ -3,7 +3,7 @@ using Cairo;
 using System;
 using GB;
 
-public class GBDisplay
+public class GBDisplay : IDisplay
 {
     private Window window;
     private DrawingArea canvas;
@@ -21,15 +21,23 @@ public class GBDisplay
         new Color(0, 0, 0)        // Black
     };
 
-    public GBDisplay(int pixelSize = 3)
+    private readonly IInputHandler input;
+    private readonly IKeyMapper keyMapper;
+
+    public GBDisplay(int pixelSize = 3, IInputHandler input = null, IKeyMapper keyMapper = null)
     {
         this.pixelSize = pixelSize;
+        this.input = input;
+        this.keyMapper = keyMapper ?? new DefaultKeyMapper();
 
         Application.Init();
 
         window = new Window("Game Boy Display");
         canvas = new DrawingArea();
         canvas.ExposeEvent += Canvas_ExposeEvent;
+        window.AddEvents((int)Gdk.EventMask.KeyPressMask | (int)Gdk.EventMask.KeyReleaseMask);
+        window.KeyPressEvent += Window_KeyPressEvent;
+        window.KeyReleaseEvent += Window_KeyReleaseEvent;
 
         window.Add(canvas);
         window.Resize(160 * pixelSize, 144 * pixelSize);
@@ -43,6 +51,23 @@ public class GBDisplay
     public void Start()
     {
         Application.Run();
+    }
+
+    public void RunLoop(Action<double> onTick)
+    {
+        DateTime last = DateTime.UtcNow;
+
+        GLib.Timeout.Add(1, () =>
+        {
+            var now = DateTime.UtcNow;
+            double delta = (now - last).TotalSeconds;
+            last = now;
+
+            onTick(delta);
+            return true;
+        });
+
+        Start();
     }
 
     /// <summary>
@@ -101,5 +126,18 @@ public class GBDisplay
             }
         }
     }
-}
 
+    private void Window_KeyPressEvent(object o, KeyPressEventArgs args)
+    {
+        if (input == null) return;
+        if (keyMapper.TryMapGtkKey(args.Event.KeyValue, out JoypadButton btn))
+            input.SetButton(btn, true);
+    }
+
+    private void Window_KeyReleaseEvent(object o, KeyReleaseEventArgs args)
+    {
+        if (input == null) return;
+        if (keyMapper.TryMapGtkKey(args.Event.KeyValue, out JoypadButton btn))
+            input.SetButton(btn, false);
+    }
+}

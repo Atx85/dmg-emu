@@ -1,0 +1,1 @@
+mcs program.cs IDisplay.cs Input.cs Joypad.cs Timer.cs Bus.cs Ppu.cs Dbg.cs Cartridge.cs Gameboy.cs Cpu.cs GBDisplaySdl.cs Sdl.cs && DYLD_LIBRARY_PATH=/opt/homebrew/lib:/usr/local/lib mono ./program.exe
