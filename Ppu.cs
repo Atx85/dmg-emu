@@ -1,389 +1,500 @@
 using System;
-using System.Collections.Generic;
-
-
-namespace GB {
-
-  public struct Sprite
-  {
-    public int x, y;
-    public byte tile;
-    public byte attr;
-  }
-  public struct Pixel {
-    private ushort _data;
-
-    public byte Color {
-      get => GetBits(_data, 0, 2); // bits 0–1
-      set => _data = SetBits(_data, 0, 2, value);
-    }
-
-    public byte Palette {
-      get => GetBits(_data, 2, 3); // bits 2–4
-      set => _data = SetBits(_data, 2, 3, value);
-    }
-
-    public byte SpritePriority {
-      get => GetBits(_data, 5, 6); // bits 5–10
-      set => _data = SetBits(_data, 5, 6, value);
-    }
-
-    public bool BackgroundPriority {
-      get => GetBits(_data, 11, 1) != 0; // bit 11
-      set => _data = SetBits(_data, 11, 1, (byte)(value ? 1 : 0));
-    }
-
-    public bool IsTransparent => Color == 0;
-
-    public Pixel(byte color, byte palette, byte spritePriority, bool bgPriority) {
-      _data = 0;
-      Color = color;
-      Palette = palette;
-      SpritePriority = spritePriority;
-      BackgroundPriority = bgPriority;
-    }
-
-    // Bitfield helper methods
-    private static byte GetBits(ushort source, int pos, int length) {
-      return (byte)((source >> pos) & ((1 << length) - 1));
-    }
-
-    private static ushort SetBits(ushort source, int pos, int length, byte value) {
-      ushort mask = (ushort)(((1 << length) - 1) << pos);
-      ushort cleared = (ushort)(source & ~mask);
-      ushort shifted = (ushort)((value << pos) & mask);
-      return (ushort)(cleared | shifted);
-    }
-  }
-
-  public class Ppu {
-    Bus bus;
-    int dot;
-    bool frameSignaled = false;
-    public delegate void FrameReadyHandler(Pixel[,] framebuffer);
-    List<Sprite> scanlineSprites = new List<Sprite>(10);
-    public event FrameReadyHandler OnFrameReady;
-    int mode;
-    public Pixel[,] Framebuffer;
-    bool isBit(byte val, ushort i) => i < 8 && (val & (1 << i)) != 0;
-    // LCDC - 0xFF40
-    byte LCDC => bus.Read(0xFF40);
-    bool IsLCDEnabled => isBit(LCDC, 7); 
-    int  WindowTileMapArea => isBit(LCDC, 6) ? 0x9C00 : 0x9800;
-    bool IsWindowEnabled => isBit(LCDC, 5); // Changing the value of this register mid-frame triggers a more complex behaviour
-    bool BgWinAddrMode => isBit(LCDC, 4);
-    int  BgTileMapArea => isBit(LCDC, 3) ? 0x9C00 : 0x9800;
-    int  ObjSize => isBit(LCDC, 2) ? 2 : 1;
-    bool IsObjEnabled => isBit(LCDC, 1);
-    /*
-       LCDC.0 — BG and Window enable/priority
-       LCDC.0 has different meanings depending on Game Boy type and Mode:
-       Non-CGB Mode (DMG, SGB and CGB in compatibility mode): BG and Window display
-       When Bit 0 is cleared, both background and window become blank (white), and the Window Display Bit is ignored in that case. Only objects may still be displayed (if enabled in Bit 1). */
-    // LCD Status Register - 0xFF41
-    byte STAT => bus.Read(0xFF41);
-    byte SCY => bus.Read(0xFF42);
-    byte SCX => bus.Read(0xFF43);
-    byte LY => bus.LY;//bus.Read(0xFF44); // LCD Y coord
-    byte LYC => bus.Read(0xFF45); 
-    byte BGP(int id) {
-      if (id < 0 || id > 3)
-        throw new ArgumentOutOfRangeException(nameof(id), "ID must be 0–3");
-
-      byte bgp = bus.Read(0xFF47);
-      return (byte)((bgp >> (id * 2)) & 0b11);
-    }
-    // ff48, ff49
-    byte OBP(byte palette, int id) {
-      if (id < 0 || id > 3)
-        throw new ArgumentOutOfRangeException(nameof(id), "ID must be 0–3");
-      if (palette != 0 && palette != 1)
-        throw new ArgumentOutOfRangeException(nameof(palette), "Palette must be 0 or 1");
-
-      ushort address = (ushort)(palette == 0 ? 0xFF48 : 0xFF49);
-      byte obp = bus.Read(address);
-      return (byte)((obp >> (id * 2)) & 0b11);
-    }
-
-    byte WX => bus.Read(0xFF4A);
-    byte WY => bus.Read(0xFF4B);
-    public Ppu(Bus _bus) {
-      Framebuffer = new Pixel[144, 160];
-      bus = _bus;
-      dot = 0;
-      mode = 2;
-    }
-
-
-    void SetSTATMode(int newMode)
+namespace GB
+{
+    // --------------------------
+    // ENUMS
+    // --------------------------
+    public enum PpuMode : byte
     {
-      // clear bits 0-1
-      byte stat = (byte)(STAT & 0xFC);
-      stat |= (byte)(newMode & 0x3);
-      bus.Write(0xFF41, stat);
+        HBlank = 0,
+        VBlank = 1,
+        OamScan = 2,
+        Drawing = 3
     }
-    void ScanSpritesForLine()
+
+    // --------------------------
+    // INTERFACES
+    // --------------------------
+    public interface IPpuMemory
     {
-      scanlineSprites.Clear();
+        byte ReadVram(ushort addr);
+        byte ReadOam(ushort addr);
+    }
 
-      int spriteHeight = ObjSize == 2 ? 16 : 8;
+    public interface IFrameBuffer
+    {
+        void SetPixel(int x, int y, int color);
+        int GetPixel(int x, int y);
+        void Clear(int color = 0);
+    }
 
-      for (int i = 0; i < 40 && scanlineSprites.Count < 10; i++)
-      {
-        ushort addr = (ushort)(0xFE00 + i * 4);
-        int y = bus.Read(addr) - 16;
-        int x = bus.Read((ushort)(addr + 1)) - 8;
-        byte tile = bus.Read((ushort)(addr + 2));
-        byte attr = bus.Read((ushort)(addr + 3));
+    public interface IPpuRegisters
+    {
+        byte SCX { get; }
+        byte SCY { get; }
+        byte LY { get; set; }
+        byte LYC { get; }
+        byte BGP { get; }
+        byte OBP0 { get; }
+        byte OBP1 { get; }
+        byte LCDC { get; }
+        PpuMode Mode { get; set; }
+        bool LcdEnabled { get; }
 
-        if (LY >= y && LY < y + spriteHeight)
+        byte WX { get; }
+        byte WY { get; }
+
+        byte STAT { get; set; }
+    }
+    public interface IPpuInterrupts
+    {
+        void RequestVBlank();
+        void RequestStat();
+    }
+
+    public interface IPpuRenderer
+    {
+        void RenderScanline(int ly);
+    }
+
+    // --------------------------
+    // FRAMEBUFFER
+    // --------------------------
+    public class FrameBuffer : IFrameBuffer
+    {
+        private readonly int[,] pixels = new int[160, 144];
+
+        public void SetPixel(int x, int y, int color)
         {
-          scanlineSprites.Add(new Sprite { x = x, y = y, tile = tile, attr = attr });
-        }
-      }
-    }
-
-    // Find up to 10 sprites for this line
-
-    void Mode2()
-    {
-      if (dot == 0)
-      {
-        ScanSpritesForLine();
-        mode = 2;
-        SetSTATMode(mode);
-        CheckSTATInterrupt(mode);
-      }
-
-      if (dot == 80)
-        mode = 3; // enter drawing
-    }
-    void CheckSTATInterrupt(int mode)
-    {
-      byte stat = bus.Read(0xFF41);
-      bool trigger = false;
-
-      // Mode interrupt
-      switch(mode)
-      {
-        case 0: if ((stat & 0x08) != 0) trigger = true; break; // HBlank
-        case 1: if ((stat & 0x10) != 0) trigger = true; break; // VBlank
-        case 2: if ((stat & 0x20) != 0) trigger = true; break; // OAM
-      }
-
-      // LYC=LY coincidence
-      if (bus.LY == LYC)
-      {
-        stat |= 0x04; // set coincidence flag
-        if ((stat & 0x40) != 0) trigger = true;
-      }
-      else
-      {
-        stat &= 0xFB; // clear coincidence flag
-      }
-
-      bus.Write(0xFF41, stat);
-
-      if (trigger)
-        bus.RequestInterrupt(1); // 1 = LCD STAT
-    }
-
-    Pixel FetchBgPixel(int pixelIndex)
-    {
-      if (!isBit(LCDC, 0))
-        return new Pixel(0, 0, 0, false);
-
-      bool usingWindow =
-        IsWindowEnabled &&
-        LY >= WY &&
-        pixelIndex >= WX - 7;
-
-      int pixelX, pixelY;
-
-      if (usingWindow)
-      {
-        pixelX = pixelIndex - (WX - 7);
-        pixelY = LY - WY;
-      }
-      else
-      {
-        pixelX = (SCX + pixelIndex) & 0xFF;
-        pixelY = (SCY + LY) & 0xFF;
-      }
-
-      int tileX = pixelX >> 3;
-      int tileY = pixelY >> 3;
-
-      ushort mapBase = (ushort)(usingWindow ? WindowTileMapArea : BgTileMapArea);
-      ushort tileMapAddr = (ushort)(mapBase + tileY * 32 + tileX);
-
-      byte tileId = bus.Read(tileMapAddr);
-      int tileIndex = BgWinAddrMode ? (int)tileId : (int)(sbyte)tileId;
-      ushort tileBase = BgWinAddrMode ? (ushort)0x8000 : (ushort)0x8800;
-      ushort tileAddr = (ushort)(tileBase + tileIndex * 16);
-
-      int row = pixelY & 7;
-      byte lo = bus.Read((ushort)(tileAddr + row * 2));
-      byte hi = bus.Read((ushort)(tileAddr + row * 2 + 1));
-
-      int bit = 7 - (pixelX & 7);
-      int colorId = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
-
-      return new Pixel(BGP(colorId), 0, 0, false);
-    }
-
-    bool TryFetchSpritePixel(int pixelIndex, Pixel bg, out Pixel result)
-    {
-      foreach (var spr in scanlineSprites)
-      {
-        int sx = pixelIndex - spr.x;
-        if (sx < 0 || sx >= 8) continue;
-
-        int spriteHeight = ObjSize == 2 ? 16 : 8;
-        int sy = LY - spr.y;
-        if (sy < 0 || sy >= spriteHeight) continue;
-
-        bool xFlip = (spr.attr & 0x20) != 0;
-        bool yFlip = (spr.attr & 0x40) != 0;
-
-        int px = xFlip ? 7 - sx : sx;
-        int py = yFlip ? (spriteHeight - 1 - sy) : sy;
-
-        byte tileIndex = spr.tile;
-        if (spriteHeight == 16)
-          tileIndex &= 0xFE;
-
-        ushort tileAddr = (ushort)(0x8000 + tileIndex * 16 + py * 2);
-        byte lo = bus.Read(tileAddr);
-        byte hi = bus.Read((ushort)(tileAddr + 1));
-
-        int bit = 7 - px;
-        int colorId = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
-
-        if (colorId == 0)
-          continue;
-
-        bool behindBg = (spr.attr & 0x80) != 0;
-        if (behindBg && bg.Color != 0)
-          continue;
-
-        int palette = (spr.attr >> 4) & 1;
-        byte finalColor = OBP((byte)palette, colorId);
-
-        result = new Pixel(finalColor, (byte)palette, 0, behindBg);
-        return true;
-      }
-
-      result = new Pixel();
-      return false;
-    }
-    // Render background, window, sprites
-
-
-    void Mode3()
-    {
-      int pixelIndex = dot - 80;
-      if (pixelIndex < 0 || pixelIndex >= 160 || LY >= 144)
-        return;
-
-      Pixel bg = FetchBgPixel(pixelIndex);
-
-      if (IsObjEnabled && TryFetchSpritePixel(pixelIndex, bg, out Pixel sprite))
-        Framebuffer[LY, pixelIndex] = sprite;
-      else
-        Framebuffer[LY, pixelIndex] = bg;
-
-      if (pixelIndex == 159)
-      {
-        mode = 0; // HBlank
-        SetSTATMode(mode);
-        CheckSTATInterrupt(mode);
-      }
-    }
-    // Wait for next line; CPU can access VRAM/OAM
-
-
-    void Mode0()
-    {
-      if (dot >= 456)
-      {
-        dot = 0;
-        bus.TickLY();
-
-        if (bus.LY < 144)
-        {
-          mode = 2; // OAM scan next line
-        }
-        else
-        {
-          mode = 1; // VBlank
-          frameSignaled = false;
+            if ((uint)x >= 160 || (uint)y >= 144) return;
+            pixels[x, y] = color;
         }
 
-        SetSTATMode(mode);
-        CheckSTATInterrupt(mode);
-      }
-    }
-    // No rendering; frame is done
-
-    void Mode1()
-    {
-      // Fire frame event once, when entering VBlank
-      if (!frameSignaled)
-      {
-        frameSignaled = true;
-        OnFrameReady?.Invoke(Framebuffer);
-      }
-
-      // Wait for the line to finish
-      if (dot >= 456)
-      {
-        dot = 0;
-        bus.TickLY();  // increment LY
-        if (bus.LY > 153)
+        public int GetPixel(int x, int y)
         {
-          bus.ResetLY();  // back to line 0
-          mode = 2;       // start OAM scan for new frame
-          frameSignaled = false;
+            if ((uint)x >= 160 || (uint)y >= 144) return 0;
+            return pixels[x, y];
         }
-      }
+
+        public void Clear(int color = 0)
+        {
+            for (int y = 0; y < 144; y++)
+                for (int x = 0; x < 160; x++)
+                    pixels[x, y] = color;
+        }
     }
 
-
-
-    public void Tick()
+    // --------------------------
+    // TIMING
+    // --------------------------
+    public class PpuTiming
     {
-      switch (mode)
-      {
-        case 0: Mode0(); break;
-        case 1: Mode1(); break;
-        case 2: Mode2(); break;
-        case 3: Mode3(); break;
-      }
-
-      dot++;
-      /*
-         if (dot >= 456)
-         {
-         dot = 0;
-         bus.TickLY();
-
-         if (bus.LY == 144)
-         {
-         mode = 1; // enter VBlank
-         frameSignaled = false;
-         }
-         else if (bus.LY > 153)
-         {
-         bus.ResetLY();
-         mode = 2; // new frame
-         }
-         else
-         {
-         mode = 2;
-         }
-         }
-         */
+        public int GetModeCycles(PpuMode mode)
+        {
+            switch (mode)
+            {
+                case PpuMode.OamScan:
+                    return 80;
+                case PpuMode.Drawing:
+                    return 172;
+                case PpuMode.HBlank:
+                    return 204;
+                case PpuMode.VBlank:
+                    return 456;
+                default:
+                    return 0;
+            }
+        }
     }
-  }
+
+    // --------------------------
+    // BUS ADAPTERS
+    // --------------------------
+    public class BusMemoryAdapter : IPpuMemory
+    {
+        private readonly Bus bus;
+        public BusMemoryAdapter(Bus bus) { this.bus = bus; }
+
+        public byte ReadVram(ushort addr) => bus.Read((ushort)(0x8000 + (addr & 0x1FFF)));
+        public byte ReadOam(ushort addr) => bus.OAMRam[addr & 0xFF];
+    }
+
+public class BusRegistersAdapter : IPpuRegisters
+{
+    private readonly Bus bus;
+
+    public BusRegistersAdapter(Bus bus)
+    {
+        this.bus = bus;
+    }
+
+    public byte SCX => bus.SCX;
+    public byte SCY => bus.SCY;
+
+    public byte LY
+    {
+        get { return bus.LY; }
+        set { bus.LY = value; }
+    }
+
+    public byte LYC => bus.LYC;
+    public byte BGP => bus.BGP;
+
+    public byte OBP0 => bus.OBP0;
+    public byte OBP1 => bus.OBP1;
+
+    public byte LCDC => bus.LCDC;
+
+    public PpuMode Mode
+    {
+        get { return (PpuMode)(bus.PpuMode & 3); }
+        set
+        {
+            bus.PpuMode = (int)value;
+            bus.STAT = (byte)((bus.STAT & 0xFC) | (byte)value);
+        }
+    }
+
+    public bool LcdEnabled
+    {
+        get { return (bus.LCDC & 0x80) != 0; }
+    }
+
+    public byte WX => bus.WX;
+    public byte WY => bus.WY;
+
+    public byte STAT
+    {
+        get { return bus.STAT; }
+        set { bus.STAT = value; }
+    }
 }
+
+
+    public class BusInterruptsAdapter : IPpuInterrupts
+    {
+        private readonly Bus bus;
+        public BusInterruptsAdapter(Bus bus) { this.bus = bus; }
+
+        public void RequestVBlank() => bus.RequestInterrupt(0);
+        public void RequestStat() => bus.RequestInterrupt(1);
+    }
+
+    // --------------------------
+    // PPU STATE MACHINE
+    // --------------------------
+    public class PpuStateMachine
+    {
+        private readonly IPpuRegisters regs;
+        private readonly IPpuInterrupts interrupts;
+        private readonly PpuTiming timing;
+        private int cyclesRemaining;
+
+        public PpuStateMachine(IPpuRegisters regs, IPpuInterrupts interrupts, PpuTiming timing)
+        {
+            this.regs = regs;
+            this.interrupts = interrupts;
+            this.timing = timing;
+            EnterMode(PpuMode.OamScan);
+        }
+
+        public bool Step(int cycles)
+        {
+            if (!regs.LcdEnabled) return false;
+
+            cyclesRemaining -= cycles;
+            if (cyclesRemaining > 0) return false;
+
+            Advance();
+            return true;
+        }
+
+        private void Advance()
+        {
+            switch (regs.Mode)
+            {
+                case PpuMode.OamScan:
+                    EnterMode(PpuMode.Drawing);
+                    break;
+                case PpuMode.Drawing:
+                    EnterMode(PpuMode.HBlank);
+                    break;
+                case PpuMode.HBlank:
+                    regs.LY++;
+                    if (regs.LY == 144)
+                    {
+                        EnterMode(PpuMode.VBlank);
+                        interrupts.RequestVBlank();
+                        if ((regs.STAT & (1 << 4)) != 0)
+                            interrupts.RequestStat();
+                    }
+                    else
+                        EnterMode(PpuMode.OamScan);
+                    break;
+                case PpuMode.VBlank:
+                    regs.LY++;
+                    if (regs.LY > 153)
+                    {
+                        regs.LY = 0;
+                        EnterMode(PpuMode.OamScan);
+                    }
+                    break;
+            }
+
+            // Update STAT mode bits (0-1: mode flag)
+            regs.STAT = (byte)((regs.STAT & 0xF8) | (byte)regs.Mode);
+
+            // Coincidence flag
+            if (regs.LY == regs.LYC)
+            {
+                regs.STAT |= (byte)(1 << 2); // cast to byte
+                if ((regs.STAT & (1 << 6)) != 0)
+                    interrupts.RequestStat();
+            }
+            else
+            {
+                regs.STAT &= (byte)0xFB;
+            }
+
+            // Mode 0 interrupt
+            if (regs.Mode == PpuMode.HBlank && (regs.STAT & (1 << 3)) != 0)
+                interrupts.RequestStat();
+
+            // Mode 2 interrupt
+            if (regs.Mode == PpuMode.OamScan && (regs.STAT & (1 << 5)) != 0)
+                interrupts.RequestStat();
+        }
+
+        private void EnterMode(PpuMode mode)
+        {
+            regs.Mode = mode;
+            cyclesRemaining = timing.GetModeCycles(mode);
+        }
+    }
+
+    // --------------------------
+    // BACKGROUND RENDERER
+    // --------------------------
+    public class BackgroundRenderer : IPpuRenderer
+    {
+        private readonly IPpuMemory mem;
+        private readonly IPpuRegisters regs;
+        private readonly IFrameBuffer fb;
+
+        public BackgroundRenderer(IPpuMemory mem, IPpuRegisters regs, IFrameBuffer fb)
+        {
+            this.mem = mem;
+            this.regs = regs;
+            this.fb = fb;
+        }
+
+        public void RenderScanline(int ly)
+        {
+            int scy = regs.SCY;
+            int scx = regs.SCX;
+            int y = (ly + scy) & 0xFF;
+            int tileRow = y / 8;
+            int pixelRow = y % 8;
+
+            ushort tileMapBase = (regs.LCDC & 0x08) != 0 ? (ushort)0x1C00 : (ushort)0x1800;
+            ushort tileDataBase = (regs.LCDC & 0x10) != 0 ? (ushort)0x0000 : (ushort)0x0800;
+
+            for (int x = 0; x < 160; x++)
+            {
+                int bgX = (x + scx) & 0xFF;
+                int tileCol = bgX / 8;
+                int pixelCol = bgX % 8;
+
+                byte tileIndex = mem.ReadVram((ushort)(tileMapBase + tileRow * 32 + tileCol));
+                if (tileDataBase == 0x0800)
+                    tileIndex = (byte)(unchecked((sbyte)tileIndex) + 128);
+
+                ushort tileAddr = (ushort)(tileDataBase + tileIndex * 16 + pixelRow * 2);
+                byte low = mem.ReadVram(tileAddr);
+                byte high = mem.ReadVram((ushort)(tileAddr + 1));
+
+                int bit = 7 - pixelCol;
+                int colorId = ((high >> bit) & 1) << 1 | ((low >> bit) & 1);
+                int color = (regs.BGP >> (colorId * 2)) & 0b11;
+
+                fb.SetPixel(x, ly, color);
+            }
+        }
+    }
+
+    // --------------------------
+    // SPRITE RENDERER
+    // --------------------------
+    public class SpriteRenderer : IPpuRenderer
+    {
+        private readonly IPpuMemory mem;
+        private readonly IPpuRegisters regs;
+        private readonly IFrameBuffer fb;
+
+        public SpriteRenderer(IPpuMemory mem, IPpuRegisters regs, IFrameBuffer fb)
+        {
+            this.mem = mem;
+            this.regs = regs;
+            this.fb = fb;
+        }
+
+        public void RenderScanline(int ly)
+        {
+            int spritesDrawn = 0;
+
+            for (int i = 0; i < 40 && spritesDrawn < 10; i++)
+            {
+                int oamIndex = i * 4;
+                int spriteY = mem.ReadOam((ushort)oamIndex) - 16;
+                int spriteX = mem.ReadOam((ushort)(oamIndex + 1)) - 8;
+                byte tileIndex = mem.ReadOam((ushort)(oamIndex + 2));
+                byte flags = mem.ReadOam((ushort)(oamIndex + 3));
+
+                int height = (regs.LCDC & 0x04) != 0 ? 16 : 8;
+
+                if (ly < spriteY || ly >= spriteY + height) continue;
+                spritesDrawn++;
+
+                int pixelRow = ly - spriteY;
+
+                if ((flags & 0x40) != 0) pixelRow = height - 1 - pixelRow;
+                if (height == 16) tileIndex &= 0xFE;
+
+                ushort tileAddr = (ushort)(tileIndex * 16 + pixelRow * 2);
+                byte low = mem.ReadVram(tileAddr);
+                byte high = mem.ReadVram((ushort)(tileAddr + 1));
+
+                for (int x = 0; x < 8; x++)
+                {
+                    int px = spriteX + x;
+                    if (px < 0 || px >= 160) continue;
+
+                    int bit = (flags & 0x20) != 0 ? x : 7 - x;
+                    int colorId = ((high >> bit) & 1) << 1 | ((low >> bit) & 1);
+                    if (colorId == 0) continue;
+
+                    //byte palette = (flags & 0x10) != 0 ? (byte)0xFF : (byte)0xFC;
+                    byte palette = (flags & 0x10) != 0 ? regs.OBP1 : regs.OBP0;
+                    int color = (palette >> (colorId * 2)) & 0b11;
+
+                    int bgColor = fb.GetPixel(px, ly);
+                    if ((flags & 0x80) != 0 && bgColor != 0) continue;
+
+                    fb.SetPixel(px, ly, color);
+                }
+            }
+        }
+    }
+
+    // --------------------------
+    // WINDOW RENDERER
+    // --------------------------
+    public class WindowRenderer : IPpuRenderer
+    {
+        private readonly IPpuMemory mem;
+        private readonly IPpuRegisters regs;
+        private readonly IFrameBuffer fb;
+
+        public WindowRenderer(IPpuMemory mem, IPpuRegisters regs, IFrameBuffer fb)
+        {
+            this.mem = mem;
+            this.regs = regs;
+            this.fb = fb;
+        }
+
+        public void RenderScanline(int ly)
+        {
+            if (ly < regs.WY) return;
+
+            int y = ly - regs.WY;
+            ushort tileMapBase = (regs.LCDC & 0x40) != 0 ? (ushort)0x1C00 : (ushort)0x1800;
+            ushort tileDataBase = (regs.LCDC & 0x10) != 0 ? (ushort)0x0000 : (ushort)0x0800;
+
+            for (int x = 0; x < 160; x++)
+            {
+                if (x + 7 < regs.WX) continue;
+
+                int tileCol = (x - (regs.WX - 7)) / 8;
+                int pixelCol = (x - (regs.WX - 7)) % 8;
+                int tileRow = y / 8;
+                int pixelRow = y % 8;
+
+                byte tileIndex = mem.ReadVram((ushort)(tileMapBase + tileRow * 32 + tileCol));
+                if (tileDataBase == 0x0800)
+                    tileIndex = (byte)(unchecked((sbyte)tileIndex) + 128);
+
+                ushort tileAddr = (ushort)(tileDataBase + tileIndex * 16 + pixelRow * 2);
+                byte low = mem.ReadVram(tileAddr);
+                byte high = mem.ReadVram((ushort)(tileAddr + 1));
+
+                int bit = 7 - pixelCol;
+                int colorId = ((high >> bit) & 1) << 1 | ((low >> bit) & 1);
+                int color = (regs.BGP >> (colorId * 2)) & 0b11;
+
+                fb.SetPixel(x, ly, color);
+            }
+        }
+    }
+
+    // --------------------------
+    // PPU COORDINATOR
+    // --------------------------
+    public class Ppu
+    {
+        public event Action<IFrameBuffer> OnFrameReady;
+        private readonly PpuStateMachine stateMachine;
+        private readonly IPpuRenderer[] renderers;
+        private readonly IFrameBuffer fb;
+
+        public Ppu(PpuStateMachine sm, IFrameBuffer framebuffer, params IPpuRenderer[] renderers)
+        {
+            stateMachine = sm;
+            this.renderers = renderers;
+            fb = framebuffer;
+        }
+
+        public void Step(int cpuCycles)
+        {
+            if (stateMachine.Step(cpuCycles))
+            {
+                var regs = GetRegisters();
+                if (regs.Mode == PpuMode.HBlank)
+                {
+                    int ly = regs.LY;
+                    foreach (var r in renderers)
+                        r.RenderScanline(ly);
+
+                    if (ly == 143)
+                        OnFrameReady?.Invoke(fb);
+                }
+            }
+        }
+
+        public IFrameBuffer GetFrameBuffer() => fb;
+
+        public void DumpFrameBuffer()
+        {
+            for (int y = 0; y < 144; y++)
+            {
+                for (int x = 0; x < 160; x++)
+                {
+                    int c = fb.GetPixel(x, y);
+                    Console.Write(c == 0 ? "." : c.ToString());
+                }
+                Console.WriteLine();
+            }
+        }
+
+        private IPpuRegisters GetRegisters()
+        {
+            var regsField = typeof(PpuStateMachine)
+                .GetField("regs", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+            if (regsField != null && regsField.GetValue(stateMachine) is IPpuRegisters regs)
+                return regs;
+
+            throw new InvalidOperationException("Cannot access PPU registers");
+        }
+    }
+}
+

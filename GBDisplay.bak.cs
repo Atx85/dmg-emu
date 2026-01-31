@@ -1,24 +1,23 @@
+
 using Gtk;
 using Cairo;
 using System;
 using GB;
-
 public class GBDisplay
 {
     private Window window;
     private DrawingArea canvas;
-    private IFrameBuffer framebuffer;
+    private Pixel[,] framebuffer;
     private int pixelSize = 3;
-    private DateTime lastFrame = DateTime.MinValue;
-    private readonly TimeSpan frameTime = TimeSpan.FromSeconds(1.0 / 59.73);
-
-    // DMG palette colors (white to black)
+    DateTime lastFrame = DateTime.MinValue;
+    readonly TimeSpan frameTime = TimeSpan.FromSeconds(1.0 / 59.73);
+    // DMG palette colors
     private static readonly Color[] Colors = new Color[]
     {
-        new Color(1, 1, 1),       // White
-        new Color(0.7, 0.7, 0.7), // Light gray
-        new Color(0.4, 0.4, 0.4), // Dark gray
-        new Color(0, 0, 0)        // Black
+        new Color(1, 1, 1),
+        new Color(0.7, 0.7, 0.7),
+        new Color(0.4, 0.4, 0.4),
+        new Color(0, 0, 0)
     };
 
     public GBDisplay(int pixelSize = 3)
@@ -37,30 +36,18 @@ public class GBDisplay
         window.ShowAll();
     }
 
-    /// <summary>
-    /// Start the GTK main loop
-    /// </summary>
     public void Start()
     {
         Application.Run();
     }
 
-    /// <summary>
-    /// Set the framebuffer manually
-    /// </summary>
-    public void SetFrameBuffer(IFrameBuffer fb)
-    {
-        framebuffer = fb;
-    }
-
-    /// <summary>
-    /// Update display with the latest framebuffer
-    /// </summary>
-    public void Update(IFrameBuffer fb)
+ 
+    public void Update(Pixel[,] fb)
     {
         var now = DateTime.UtcNow;
+
         if (now - lastFrame < frameTime)
-            return; // skip frames to maintain ~59.7 FPS
+            return; // skip drawing to maintain real framerate
 
         lastFrame = now;
         framebuffer = fb;
@@ -76,13 +63,10 @@ public class GBDisplay
 
     private void Canvas_ExposeEvent(object o, ExposeEventArgs args)
     {
-        if (canvas.GdkWindow == null)
-            return;
-
         using (Context g = Gdk.CairoHelper.Create(canvas.GdkWindow))
         {
             // Fill background
-            g.SetSourceColor(Colors[0]);
+            g.SetSourceColor(new Color(1, 1, 1));
             g.Rectangle(0, 0, canvas.Allocation.Width, canvas.Allocation.Height);
             g.Fill();
 
@@ -93,10 +77,8 @@ public class GBDisplay
             {
                 for (int x = 0; x < 160; x++)
                 {
-                    int colorIndex = framebuffer.GetPixel(x, y);
-                    if (colorIndex < 0 || colorIndex > 3)
-                        colorIndex = 0; // safety check
-                    DrawPixel(g, x * pixelSize, y * pixelSize, Colors[colorIndex]);
+                    var px = framebuffer[y, x];
+                    DrawPixel(g, x * pixelSize, y * pixelSize, Colors[px.Color]);
                 }
             }
         }

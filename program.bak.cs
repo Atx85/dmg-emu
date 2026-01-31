@@ -19,13 +19,10 @@ public class Program
    // // var gb = new Gameboy();
    // // TestPpu(gb);
     var display = new GBDisplay(pixelSize: 4);
-// Give the display the PPU framebuffer
-display.SetFrameBuffer(gb.ppu.GetFrameBuffer());
+    gb.ppu.OnFrameReady += display.Update;
 
-// Refresh display whenever a frame is ready
-gb.ppu.OnFrameReady += fb => display.Update(gb.ppu.GetFrameBuffer());  
 
-const double CPU_HZ = 4194304.0;
+  const double CPU_HZ = 4194304.0;
     DateTime last = DateTime.UtcNow;
     double cycleRemainder = 0;
 
@@ -74,7 +71,7 @@ const double CPU_HZ = 4194304.0;
         // Tick enough dots for one frame (154 lines × 456 dots)
         for (int line = 0; line < 154; line++)
         for (int dot = 0; dot < 456; dot++)
-        ppu.Step(1);
+        ppu.Tick();
 
         return true; // continue repeating if you want animation
         });
