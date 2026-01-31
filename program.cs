@@ -13,20 +13,17 @@ public class Program
     // new Gameboy("./roms/01-special.gb");
     // new Gameboy("./roms/05-op rp.gb");
     // new Gameboy("./roms/rom.gb");
-   var gb = new Gameboy("./roms/dmg-acid2.gb");
+   var gb = new Gameboy("./roms/tetris.gb");
    // // var gb = new Gameboy();
    // // TestPpu(gb);
-    IDisplay display;
-// #if GTK
-    display = new GBDisplay(pixelSize: 4, input: gb.bus.Joypad);
-///#else
-///    display = new GBDisplaySdl(pixelSize: 4, input: gb.bus.Joypad);
-///#endif
+    // Choose one:
+    IDisplay display = CreateDisplaySdl(gb);
+    // IDisplay display = CreateDisplayGtk(gb);
 // Give the display the PPU framebuffer
 display.SetFrameBuffer(gb.ppu.GetFrameBuffer());
 
 // Refresh display whenever a frame is ready
-gb.ppu.OnFrameReady += fb => display.Update(fb);  
+gb.ppu.OnFrameReady += fb => display.Update(fb);
 
     const double CPU_HZ = 4194304.0;
     double cycleRemainder = 0;
@@ -45,40 +42,19 @@ gb.ppu.OnFrameReady += fb => display.Update(fb);
   }
 
 
-// #if GTK
-  static void TestPpu(Gameboy gb)
+  static IDisplay CreateDisplaySdl(Gameboy gb)
   {
-    var ppu = gb.ppu;
-
-    // Make sure BG is enabled
-    gb.bus.Write(0xFF40, 0x91);
-    gb.bus.Write(0xFF47, 0xE4); // BGP palette
-
-    // Fill VRAM & tile map
-    for (ushort addr = 0x8000; addr < 0x9000; addr++)
-      gb.bus.Write(addr, (byte)(addr & 0xFF));
-    for (ushort addr = 0x9800; addr < 0x9C00; addr++)
-      gb.bus.Write(addr, (byte)((addr - 0x9800) % 256));
-
-    // Create display first
-    var display = new GBDisplay(pixelSize: 4);
-    gb.ppu.OnFrameReady += display.Update;
-
-    // Step PPU in a timer so GTK main loop can run
-    GLib.Timeout.Add(1600, () =>
-        {
-        // Tick enough dots for one frame (154 lines × 456 dots)
-        for (int line = 0; line < 154; line++)
-        for (int dot = 0; dot < 456; dot++)
-        ppu.Step(1);
-
-        return true; // continue repeating if you want animation
-        });
-
-    // Start GTK main loop
-    display.Start();
+    return new GBDisplaySdl(pixelSize: 4, input: gb.bus.Joypad);
   }
-// #endif
+
+  static IDisplay CreateDisplayGtk(Gameboy gb)
+  {
+    var asm = typeof(Program).Assembly;
+    var t = asm.GetType("GBDisplay");
+    if (t == null)
+      throw new Exception("GBDisplay type not found. Compile with GBDisplay.cs and gtk-sharp.");
+    return (IDisplay)Activator.CreateInstance(t, new object[] { 4, gb.bus.Joypad, null });
+  }
 }
 /*
 public static class FramebufferTest {

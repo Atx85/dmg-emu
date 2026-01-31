@@ -52,6 +52,11 @@ namespace GB
         void RequestStat();
     }
 
+    public interface ILineSpriteCounter
+    {
+        int CountSpritesOnLine(int ly);
+    }
+
     public interface IPpuRenderer
     {
         void RenderScanline(int ly);
@@ -117,6 +122,32 @@ namespace GB
 
         public byte ReadVram(ushort addr) => bus.Read((ushort)(0x8000 + (addr & 0x1FFF)));
         public byte ReadOam(ushort addr) => bus.OAMRam[addr & 0xFF];
+    }
+
+    public class SpriteCounter : ILineSpriteCounter
+    {
+        private readonly IPpuMemory mem;
+        private readonly IPpuRegisters regs;
+
+        public SpriteCounter(IPpuMemory mem, IPpuRegisters regs)
+        {
+            this.mem = mem;
+            this.regs = regs;
+        }
+
+        public int CountSpritesOnLine(int ly)
+        {
+            int height = (regs.LCDC & 0x04) != 0 ? 16 : 8;
+            int count = 0;
+            for (int i = 0; i < 40 && count < 10; i++)
+            {
+                int oamIndex = i * 4;
+                int y = mem.ReadOam((ushort)oamIndex) - 16;
+                if (ly < y || ly >= y + height) continue;
+                count++;
+            }
+            return count;
+        }
     }
 
 public class BusRegistersAdapter : IPpuRegisters
@@ -188,19 +219,26 @@ public class BusRegistersAdapter : IPpuRegisters
         private readonly IPpuRegisters regs;
         private readonly IPpuInterrupts interrupts;
         private readonly PpuTiming timing;
+        private readonly ILineSpriteCounter spriteCounter;
         private int cyclesRemaining;
+        private bool lcdWasEnabled;
+        private int currentDrawingCycles;
 
-        public PpuStateMachine(IPpuRegisters regs, IPpuInterrupts interrupts, PpuTiming timing)
+        public PpuStateMachine(IPpuRegisters regs, IPpuInterrupts interrupts, PpuTiming timing, ILineSpriteCounter spriteCounter = null)
         {
             this.regs = regs;
             this.interrupts = interrupts;
             this.timing = timing;
-            EnterMode(PpuMode.OamScan);
+            this.spriteCounter = spriteCounter;
+            lcdWasEnabled = regs.LcdEnabled;
+            if (lcdWasEnabled)
+                EnterMode(PpuMode.OamScan);
         }
 
         public bool Step(int cycles)
         {
-            if (!regs.LcdEnabled) return false;
+            if (HandleLcdEnableTransition())
+                return false;
 
             cyclesRemaining -= cycles;
             if (cyclesRemaining > 0) return false;
@@ -221,6 +259,7 @@ public class BusRegistersAdapter : IPpuRegisters
                     break;
                 case PpuMode.HBlank:
                     regs.LY++;
+                    UpdateCoincidenceAndMaybeInterrupt();
                     if (regs.LY == 144)
                     {
                         EnterMode(PpuMode.VBlank);
@@ -233,21 +272,50 @@ public class BusRegistersAdapter : IPpuRegisters
                     break;
                 case PpuMode.VBlank:
                     regs.LY++;
+                    UpdateCoincidenceAndMaybeInterrupt();
                     if (regs.LY > 153)
                     {
                         regs.LY = 0;
+                        UpdateCoincidenceAndMaybeInterrupt();
                         EnterMode(PpuMode.OamScan);
                     }
                     break;
             }
+        }
 
-            // Update STAT mode bits (0-1: mode flag)
-            regs.STAT = (byte)((regs.STAT & 0xF8) | (byte)regs.Mode);
+        private void EnterMode(PpuMode mode)
+        {
+            regs.Mode = mode;
+            cyclesRemaining = timing.GetModeCycles(mode);
 
-            // Coincidence flag
+            if (mode == PpuMode.OamScan && spriteCounter != null)
+            {
+                int count = spriteCounter.CountSpritesOnLine(regs.LY);
+                currentDrawingCycles = 172 + count * 6;
+            }
+            else if (mode == PpuMode.Drawing && currentDrawingCycles > 0)
+            {
+                cyclesRemaining = currentDrawingCycles;
+            }
+            else if (mode == PpuMode.HBlank && currentDrawingCycles > 0)
+            {
+                int hblank = 456 - 80 - currentDrawingCycles;
+                cyclesRemaining = hblank > 0 ? hblank : 0;
+                currentDrawingCycles = 0;
+            }
+            regs.STAT = (byte)((regs.STAT & 0xF8) | (byte)mode);
+
+            if (mode == PpuMode.HBlank && (regs.STAT & (1 << 3)) != 0)
+                interrupts.RequestStat();
+            if (mode == PpuMode.OamScan && (regs.STAT & (1 << 5)) != 0)
+                interrupts.RequestStat();
+        }
+
+        private void UpdateCoincidenceAndMaybeInterrupt()
+        {
             if (regs.LY == regs.LYC)
             {
-                regs.STAT |= (byte)(1 << 2); // cast to byte
+                regs.STAT |= (byte)(1 << 2);
                 if ((regs.STAT & (1 << 6)) != 0)
                     interrupts.RequestStat();
             }
@@ -255,20 +323,34 @@ public class BusRegistersAdapter : IPpuRegisters
             {
                 regs.STAT &= (byte)0xFB;
             }
-
-            // Mode 0 interrupt
-            if (regs.Mode == PpuMode.HBlank && (regs.STAT & (1 << 3)) != 0)
-                interrupts.RequestStat();
-
-            // Mode 2 interrupt
-            if (regs.Mode == PpuMode.OamScan && (regs.STAT & (1 << 5)) != 0)
-                interrupts.RequestStat();
         }
 
-        private void EnterMode(PpuMode mode)
+        private bool HandleLcdEnableTransition()
         {
-            regs.Mode = mode;
-            cyclesRemaining = timing.GetModeCycles(mode);
+            bool enabled = regs.LcdEnabled;
+            if (!enabled)
+            {
+                if (lcdWasEnabled)
+                {
+                    regs.LY = 0;
+                    regs.Mode = PpuMode.HBlank;
+                    regs.STAT = (byte)((regs.STAT & 0xF8) | 0);
+                    UpdateCoincidenceAndMaybeInterrupt();
+                    cyclesRemaining = 0;
+                }
+                lcdWasEnabled = false;
+                return true;
+            }
+
+            if (!lcdWasEnabled && enabled)
+            {
+                regs.LY = 0;
+                UpdateCoincidenceAndMaybeInterrupt();
+                EnterMode(PpuMode.OamScan);
+            }
+
+            lcdWasEnabled = true;
+            return false;
         }
     }
 
@@ -290,6 +372,12 @@ public class BusRegistersAdapter : IPpuRegisters
 
         public void RenderScanline(int ly)
         {
+            if ((regs.LCDC & 0x01) == 0)
+            {
+                for (int x = 0; x < 160; x++)
+                    fb.SetPixel(x, ly, 0);
+                return;
+            }
             int scy = regs.SCY;
             int scx = regs.SCX;
             int y = (ly + scy) & 0xFF;
@@ -340,23 +428,47 @@ public class BusRegistersAdapter : IPpuRegisters
 
         public void RenderScanline(int ly)
         {
-            int spritesDrawn = 0;
+            if ((regs.LCDC & 0x02) == 0)
+                return;
+            int height = (regs.LCDC & 0x04) != 0 ? 16 : 8;
 
-            for (int i = 0; i < 40 && spritesDrawn < 10; i++)
+            int[] spriteX = new int[10];
+            int[] spriteY = new int[10];
+            byte[] spriteTile = new byte[10];
+            byte[] spriteFlags = new byte[10];
+            int[] spriteIndex = new int[10];
+            int count = 0;
+
+            for (int i = 0; i < 40 && count < 10; i++)
             {
                 int oamIndex = i * 4;
-                int spriteY = mem.ReadOam((ushort)oamIndex) - 16;
-                int spriteX = mem.ReadOam((ushort)(oamIndex + 1)) - 8;
-                byte tileIndex = mem.ReadOam((ushort)(oamIndex + 2));
-                byte flags = mem.ReadOam((ushort)(oamIndex + 3));
+                int y = mem.ReadOam((ushort)oamIndex) - 16;
+                int x = mem.ReadOam((ushort)(oamIndex + 1)) - 8;
+                if (ly < y || ly >= y + height) continue;
 
-                int height = (regs.LCDC & 0x04) != 0 ? 16 : 8;
+                spriteY[count] = y;
+                spriteX[count] = x;
+                spriteTile[count] = mem.ReadOam((ushort)(oamIndex + 2));
+                spriteFlags[count] = mem.ReadOam((ushort)(oamIndex + 3));
+                spriteIndex[count] = i;
+                count++;
+            }
 
-                if (ly < spriteY || ly >= spriteY + height) continue;
-                spritesDrawn++;
+            int[] chosenX = new int[160];
+            int[] chosenIndex = new int[160];
+            byte[] chosenColorId = new byte[160];
+            byte[] chosenFlags = new byte[160];
+            byte[] chosenPalette = new byte[160];
+            bool[] hasSprite = new bool[160];
 
-                int pixelRow = ly - spriteY;
+            for (int s = 0; s < count; s++)
+            {
+                int y = spriteY[s];
+                int x = spriteX[s];
+                byte tileIndex = spriteTile[s];
+                byte flags = spriteFlags[s];
 
+                int pixelRow = ly - y;
                 if ((flags & 0x40) != 0) pixelRow = height - 1 - pixelRow;
                 if (height == 16) tileIndex &= 0xFE;
 
@@ -364,24 +476,54 @@ public class BusRegistersAdapter : IPpuRegisters
                 byte low = mem.ReadVram(tileAddr);
                 byte high = mem.ReadVram((ushort)(tileAddr + 1));
 
-                for (int x = 0; x < 8; x++)
+                for (int pxl = 0; pxl < 8; pxl++)
                 {
-                    int px = spriteX + x;
+                    int px = x + pxl;
                     if (px < 0 || px >= 160) continue;
 
-                    int bit = (flags & 0x20) != 0 ? x : 7 - x;
+                    int bit = (flags & 0x20) != 0 ? pxl : 7 - pxl;
                     int colorId = ((high >> bit) & 1) << 1 | ((low >> bit) & 1);
                     if (colorId == 0) continue;
 
-                    //byte palette = (flags & 0x10) != 0 ? (byte)0xFF : (byte)0xFC;
-                    byte palette = (flags & 0x10) != 0 ? regs.OBP1 : regs.OBP0;
-                    int color = (palette >> (colorId * 2)) & 0b11;
-
-                    int bgColor = fb.GetPixel(px, ly);
-                    if ((flags & 0x80) != 0 && bgColor != 0) continue;
-
-                    fb.SetPixel(px, ly, color);
+                    if (!hasSprite[px])
+                    {
+                        hasSprite[px] = true;
+                        chosenX[px] = x;
+                        chosenIndex[px] = spriteIndex[s];
+                        chosenColorId[px] = (byte)colorId;
+                        chosenFlags[px] = flags;
+                        chosenPalette[px] = (byte)((flags & 0x10) != 0 ? regs.OBP1 : regs.OBP0);
+                    }
+                    else
+                    {
+                        int curX = chosenX[px];
+                        int curIndex = chosenIndex[px];
+                        if (x < curX || (x == curX && spriteIndex[s] < curIndex))
+                        {
+                            chosenX[px] = x;
+                            chosenIndex[px] = spriteIndex[s];
+                            chosenColorId[px] = (byte)colorId;
+                            chosenFlags[px] = flags;
+                            chosenPalette[px] = (byte)((flags & 0x10) != 0 ? regs.OBP1 : regs.OBP0);
+                        }
+                    }
                 }
+            }
+
+            bool bgEnabled = (regs.LCDC & 0x01) != 0;
+            for (int px = 0; px < 160; px++)
+            {
+                if (!hasSprite[px]) continue;
+                int colorId = chosenColorId[px];
+                if (colorId == 0) continue;
+                byte palette = chosenPalette[px];
+                int color = (palette >> (colorId * 2)) & 0b11;
+
+                int bgColor = fb.GetPixel(px, ly);
+                if (bgEnabled && (chosenFlags[px] & 0x80) != 0 && bgColor != 0)
+                    continue;
+
+                fb.SetPixel(px, ly, color);
             }
         }
     }
@@ -394,6 +536,8 @@ public class BusRegistersAdapter : IPpuRegisters
         private readonly IPpuMemory mem;
         private readonly IPpuRegisters regs;
         private readonly IFrameBuffer fb;
+        private int windowLine = 0;
+        private int lastLyRendered = -1;
 
         public WindowRenderer(IPpuMemory mem, IPpuRegisters regs, IFrameBuffer fb)
         {
@@ -404,18 +548,41 @@ public class BusRegistersAdapter : IPpuRegisters
 
         public void RenderScanline(int ly)
         {
+            if ((regs.LCDC & 0x80) == 0)
+            {
+                windowLine = 0;
+                lastLyRendered = -1;
+                return;
+            }
+
+            if (ly == 0)
+            {
+                windowLine = 0;
+                lastLyRendered = -1;
+            }
+            if ((regs.LCDC & 0x01) == 0)
+                return;
+            if ((regs.LCDC & 0x20) == 0)
+                return;
             if (ly < regs.WY) return;
 
-            int y = ly - regs.WY;
+            if (lastLyRendered == ly)
+                return;
+
+            int y = windowLine;
+            int windowXStart = regs.WX - 7;
+            if (windowXStart >= 160)
+                return;
+            if (windowXStart < 0) windowXStart = 0;
             ushort tileMapBase = (regs.LCDC & 0x40) != 0 ? (ushort)0x1C00 : (ushort)0x1800;
             ushort tileDataBase = (regs.LCDC & 0x10) != 0 ? (ushort)0x0000 : (ushort)0x0800;
 
             for (int x = 0; x < 160; x++)
             {
-                if (x + 7 < regs.WX) continue;
+                if (x < windowXStart) continue;
 
-                int tileCol = (x - (regs.WX - 7)) / 8;
-                int pixelCol = (x - (regs.WX - 7)) % 8;
+                int tileCol = (x - windowXStart) / 8;
+                int pixelCol = (x - windowXStart) % 8;
                 int tileRow = y / 8;
                 int pixelRow = y % 8;
 
@@ -433,6 +600,9 @@ public class BusRegistersAdapter : IPpuRegisters
 
                 fb.SetPixel(x, ly, color);
             }
+
+            lastLyRendered = ly;
+            windowLine++;
         }
     }
 
@@ -497,4 +667,3 @@ public class BusRegistersAdapter : IPpuRegisters
         }
     }
 }
-
