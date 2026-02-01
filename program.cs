@@ -13,7 +13,7 @@ public class Program
     // new Gameboy("./roms/01-special.gb");
     // new Gameboy("./roms/05-op rp.gb");
     // new Gameboy("./roms/rom.gb");
-   var gb = new Gameboy("./roms/tetris.gb");
+   var gb = new Gameboy("./roms/pkred.gb");
    // // var gb = new Gameboy();
    // // TestPpu(gb);
     // Choose one:

@@ -15,6 +15,11 @@ namespace GB
         public int PpuMode;       // Current PPU mode (0–3)
         private int dmaCyclesRemaining = 0;
 
+        // PPU-side raw access (bypasses CPU access restrictions)
+        public byte ReadVramRaw(ushort addr) => vram[addr & 0x1FFF];
+        public byte ReadOamRaw(ushort addr) => OAMRam[addr & 0xFF];
+        public void WriteVramRaw(ushort addr, byte value) => vram[addr & 0x1FFF] = value;
+
         // LCD registers
         private byte scx = 0;
         private byte scy = 0;
@@ -158,7 +163,6 @@ public byte WX
             if (addr >= 0xA000 && addr <= 0xBFFF) return cartridge.ReadRam(addr); // External RAM
             if (addr >= 0x8000 && addr <= 0x9FFF) // VRAM
             {
-                if (PpuMode == 3) return 0xFF; // inaccessible in mode 3
                 return vram[addr & 0x1FFF];
             }
             if (addr >= 0xE000 && addr <= 0xFDFF) return memory[addr - 0x2000]; // Echo RAM
@@ -210,7 +214,6 @@ public byte WX
             if (addr >= 0xA000 && addr <= 0xBFFF) { cartridge.WriteRam(addr, val); return; }
             if (addr >= 0x8000 && addr <= 0x9FFF) // VRAM
             {
-                if (PpuMode == 3) return; // inaccessible
                 vram[addr & 0x1FFF] = val;
                 return;
             }

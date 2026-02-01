@@ -120,8 +120,8 @@ namespace GB
         private readonly Bus bus;
         public BusMemoryAdapter(Bus bus) { this.bus = bus; }
 
-        public byte ReadVram(ushort addr) => bus.Read((ushort)(0x8000 + (addr & 0x1FFF)));
-        public byte ReadOam(ushort addr) => bus.OAMRam[addr & 0xFF];
+        public byte ReadVram(ushort addr) => bus.ReadVramRaw(addr);
+        public byte ReadOam(ushort addr) => bus.ReadOamRaw(addr);
     }
 
     public class SpriteCounter : ILineSpriteCounter
@@ -219,17 +219,14 @@ public class BusRegistersAdapter : IPpuRegisters
         private readonly IPpuRegisters regs;
         private readonly IPpuInterrupts interrupts;
         private readonly PpuTiming timing;
-        private readonly ILineSpriteCounter spriteCounter;
         private int cyclesRemaining;
         private bool lcdWasEnabled;
-        private int currentDrawingCycles;
 
         public PpuStateMachine(IPpuRegisters regs, IPpuInterrupts interrupts, PpuTiming timing, ILineSpriteCounter spriteCounter = null)
         {
             this.regs = regs;
             this.interrupts = interrupts;
             this.timing = timing;
-            this.spriteCounter = spriteCounter;
             lcdWasEnabled = regs.LcdEnabled;
             if (lcdWasEnabled)
                 EnterMode(PpuMode.OamScan);
@@ -287,22 +284,6 @@ public class BusRegistersAdapter : IPpuRegisters
         {
             regs.Mode = mode;
             cyclesRemaining = timing.GetModeCycles(mode);
-
-            if (mode == PpuMode.OamScan && spriteCounter != null)
-            {
-                int count = spriteCounter.CountSpritesOnLine(regs.LY);
-                currentDrawingCycles = 172 + count * 6;
-            }
-            else if (mode == PpuMode.Drawing && currentDrawingCycles > 0)
-            {
-                cyclesRemaining = currentDrawingCycles;
-            }
-            else if (mode == PpuMode.HBlank && currentDrawingCycles > 0)
-            {
-                int hblank = 456 - 80 - currentDrawingCycles;
-                cyclesRemaining = hblank > 0 ? hblank : 0;
-                currentDrawingCycles = 0;
-            }
             regs.STAT = (byte)((regs.STAT & 0xF8) | (byte)mode);
 
             if (mode == PpuMode.HBlank && (regs.STAT & (1 << 3)) != 0)
