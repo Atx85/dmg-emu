@@ -23,31 +23,32 @@ public class GBDisplay : IDisplay
 
     private readonly IInputHandler input;
     private readonly IKeyMapper keyMapper;
+    private readonly Func<uint, bool, bool> keyEventHandler;
 
-    public GBDisplay(int pixelSize = 3, IInputHandler input = null, IKeyMapper keyMapper = null)
+    public GBDisplay(int pixelSize = 3, IInputHandler input = null, IKeyMapper keyMapper = null, Func<uint, bool, bool> keyEventHandler = null)
     {
         this.pixelSize = pixelSize;
         this.input = input;
         this.keyMapper = keyMapper ?? new DefaultKeyMapper();
+        this.keyEventHandler = keyEventHandler;
 
         Application.Init();
 
         window = new Window("Game Boy Display");
-        canvas = new DrawingArea();
-        canvas.ExposeEvent += Canvas_ExposeEvent;
+        window.SetDefaultSize(160 * pixelSize, 144 * pixelSize);
+        window.DeleteEvent += (obj, args) => Application.Quit();
+
         window.AddEvents((int)Gdk.EventMask.KeyPressMask | (int)Gdk.EventMask.KeyReleaseMask);
         window.KeyPressEvent += Window_KeyPressEvent;
         window.KeyReleaseEvent += Window_KeyReleaseEvent;
 
+        canvas = new DrawingArea();
+        canvas.Drawn += Canvas_Drawn;
+
         window.Add(canvas);
-        window.Resize(160 * pixelSize, 144 * pixelSize);
-        window.DeleteEvent += (obj, args) => Application.Quit();
         window.ShowAll();
     }
 
-    /// <summary>
-    /// Start the GTK main loop
-    /// </summary>
     public void Start()
     {
         Application.Run();
@@ -70,17 +71,11 @@ public class GBDisplay : IDisplay
         Start();
     }
 
-    /// <summary>
-    /// Set the framebuffer manually
-    /// </summary>
     public void SetFrameBuffer(IFrameBuffer fb)
     {
         framebuffer = fb;
     }
 
-    /// <summary>
-    /// Update display with the latest framebuffer
-    /// </summary>
     public void Update(IFrameBuffer fb)
     {
         var now = DateTime.UtcNow;
@@ -99,36 +94,33 @@ public class GBDisplay : IDisplay
         g.Fill();
     }
 
-    private void Canvas_ExposeEvent(object o, ExposeEventArgs args)
+    private void Canvas_Drawn(object o, DrawnArgs args)
     {
-        if (canvas.GdkWindow == null)
+        Context g = args.Cr;
+
+        // Fill background
+        g.SetSourceColor(Colors[0]);
+        g.Rectangle(0, 0, canvas.Allocation.Width, canvas.Allocation.Height);
+        g.Fill();
+
+        if (framebuffer == null)
             return;
 
-        using (Context g = Gdk.CairoHelper.Create(canvas.GdkWindow))
+        for (int y = 0; y < 144; y++)
         {
-            // Fill background
-            g.SetSourceColor(Colors[0]);
-            g.Rectangle(0, 0, canvas.Allocation.Width, canvas.Allocation.Height);
-            g.Fill();
-
-            if (framebuffer == null)
-                return;
-
-            for (int y = 0; y < 144; y++)
+            for (int x = 0; x < 160; x++)
             {
-                for (int x = 0; x < 160; x++)
-                {
-                    int colorIndex = framebuffer.GetPixel(x, y);
-                    if (colorIndex < 0 || colorIndex > 3)
-                        colorIndex = 0; // safety check
-                    DrawPixel(g, x * pixelSize, y * pixelSize, Colors[colorIndex]);
-                }
+                int colorIndex = framebuffer.GetPixel(x, y);
+                if (colorIndex < 0 || colorIndex > 3)
+                    colorIndex = 0; // safety
+                DrawPixel(g, x * pixelSize, y * pixelSize, Colors[colorIndex]);
             }
         }
     }
 
     private void Window_KeyPressEvent(object o, KeyPressEventArgs args)
     {
+        if (keyEventHandler != null && keyEventHandler(args.Event.KeyValue, true)) return;
         if (input == null) return;
         if (keyMapper.TryMapGtkKey(args.Event.KeyValue, out JoypadButton btn))
             input.SetButton(btn, true);
@@ -136,6 +128,7 @@ public class GBDisplay : IDisplay
 
     private void Window_KeyReleaseEvent(object o, KeyReleaseEventArgs args)
     {
+        if (keyEventHandler != null && keyEventHandler(args.Event.KeyValue, false)) return;
         if (input == null) return;
         if (keyMapper.TryMapGtkKey(args.Event.KeyValue, out JoypadButton btn))
             input.SetButton(btn, false);

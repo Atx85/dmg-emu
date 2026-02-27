@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MAX_CYCLES="${MAX_CYCLES:-100000000}"
+ROM_GLOB="${ROM_GLOB:-roms/cpu_instrs/individual/*.gb}"
+
+compile() {
+  mcs program.cs IDisplay.cs Input.cs Joypad.cs Timer.cs Bus.cs Ppu.cs Dbg.cs Cartridge.cs \
+    State.cs Gameboy.cs CpuContract.cs Cpu2Structured.cs GBDisplaySdl.cs Sdl.cs
+}
+
+run_one() {
+  local rom="$1"
+  local out
+  out="$(mono ./program.exe "$rom" --headless --max-cycles="$MAX_CYCLES")"
+  local result cycles
+  result="$(printf "%s\n" "$out" | rg -o "Passed|Failed" | tail -n1 || true)"
+  cycles="$(printf "%s\n" "$out" | rg -o "headless cycles: [0-9]+" | sed 's/.*: //' | head -n1 || true)"
+  if [[ -z "$result" ]]; then result="no-result"; fi
+  if [[ -z "$cycles" ]]; then cycles="0"; fi
+  printf "%s|%s\n" "$result" "$cycles"
+}
+
+main() {
+  compile >/dev/null
+
+  local any_fail=0
+  printf "%-28s %-12s %-12s\n" "ROM" "result" "cycles"
+
+  for rom in $ROM_GLOB; do
+    local name out
+    name="$(basename "$rom")"
+    out="$(run_one "$rom")"
+
+    local result cycles
+    result="${out%%|*}"
+    cycles="${out##*|}"
+
+    printf "%-28s %-12s %-12s\n" "$name" "$result" "$cycles"
+
+    if [[ "$result" != "Passed" ]]; then
+      any_fail=1
+    fi
+  done
+
+  if [[ "$any_fail" -ne 0 ]]; then
+    echo
+    echo "Structured CPU check failed: at least one ROM did not report Passed."
+    exit 1
+  fi
+
+  echo
+  echo "All ROMs passed on Cpu2Structured."
+}
+
+main "$@"

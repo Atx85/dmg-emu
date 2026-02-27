@@ -71,5 +71,41 @@ namespace GB {
         tima++;
       }
     }
+
+    public TimerState GetState()
+    {
+      return new TimerState
+      {
+        SystemCounter = systemCounter,
+        LastCounter = lastCounter,
+        Tima = tima,
+        Tma = tma,
+        Tac = tac,
+        OverflowPending = overflowPending,
+        OverflowDelay = overflowDelay
+      };
+    }
+
+    public void SetState(TimerState s)
+    {
+      systemCounter = s.SystemCounter & 0xFFFF;
+      lastCounter = s.LastCounter;
+      tima = s.Tima;
+      tma = s.Tma;
+      tac = s.Tac;
+      overflowPending = s.OverflowPending;
+      overflowDelay = s.OverflowDelay;
+    }
+  }
+
+  public struct TimerState
+  {
+    public uint SystemCounter;
+    public ushort LastCounter;
+    public byte Tima;
+    public byte Tma;
+    public byte Tac;
+    public bool OverflowPending;
+    public int OverflowDelay;
   }
 }

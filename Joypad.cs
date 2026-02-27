@@ -61,5 +61,33 @@ namespace GB
                     requestInterrupt();
             }
         }
+
+        public JoypadState GetState()
+        {
+            var copy = new bool[buttons.Length];
+            Array.Copy(buttons, copy, buttons.Length);
+            return new JoypadState
+            {
+                SelectBits = selectBits,
+                Buttons = copy
+            };
+        }
+
+        public void SetState(JoypadState state)
+        {
+            selectBits = state.SelectBits;
+            if (state.Buttons != null)
+            {
+                int n = Math.Min(buttons.Length, state.Buttons.Length);
+                for (int i = 0; i < n; i++) buttons[i] = state.Buttons[i];
+                for (int i = n; i < buttons.Length; i++) buttons[i] = false;
+            }
+        }
+    }
+
+    public struct JoypadState
+    {
+        public byte SelectBits;
+        public bool[] Buttons;
     }
 }

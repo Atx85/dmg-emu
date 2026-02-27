@@ -15,7 +15,10 @@ internal static class SDL
     public const uint SDL_QUIT = 0x100;
     public const uint SDL_KEYDOWN = 0x300;
     public const uint SDL_KEYUP = 0x301;
-
+    public const int SDLK_F5 = 1073741886;
+    public const int SDLK_F9 = 1073741890;
+    public const int SDLK_i = (int)'i'; // 105
+    public const int SDLK_o = (int)'o'; // 111
     [DllImport("SDL2")]
     public static extern int SDL_Init(uint flags);
 

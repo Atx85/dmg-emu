@@ -364,5 +364,47 @@ public byte WX
             }
         }
 
+        public BusState GetState()
+        {
+            var memCopy = new byte[memory.Length];
+            var vramCopy = new byte[vram.Length];
+            var oamCopy = new byte[OAMRam.Length];
+            Array.Copy(memory, memCopy, memory.Length);
+            Array.Copy(vram, vramCopy, vram.Length);
+            Array.Copy(OAMRam, oamCopy, OAMRam.Length);
+            return new BusState
+            {
+                Memory = memCopy,
+                Vram = vramCopy,
+                Oam = oamCopy,
+                PpuMode = PpuMode,
+                DmaCyclesRemaining = dmaCyclesRemaining,
+                Timer = timer.GetState(),
+                Joypad = Joypad.GetState()
+            };
+        }
+
+        public void SetState(BusState s)
+        {
+            if (s.Memory != null) Array.Copy(s.Memory, memory, Math.Min(memory.Length, s.Memory.Length));
+            if (s.Vram != null) Array.Copy(s.Vram, vram, Math.Min(vram.Length, s.Vram.Length));
+            if (s.Oam != null) Array.Copy(s.Oam, OAMRam, Math.Min(OAMRam.Length, s.Oam.Length));
+            PpuMode = s.PpuMode;
+            dmaCyclesRemaining = s.DmaCyclesRemaining;
+            timer.SetState(s.Timer);
+            Joypad.SetState(s.Joypad);
+        }
+
+    }
+
+    public class BusState
+    {
+        public byte[] Memory;
+        public byte[] Vram;
+        public byte[] Oam;
+        public int PpuMode;
+        public int DmaCyclesRemaining;
+        public TimerState Timer;
+        public JoypadState Joypad;
     }
 }

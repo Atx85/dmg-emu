@@ -29,11 +29,13 @@ public class GBDisplaySdl : IDisplay
 
     private readonly IInputHandler input;
     private readonly IKeyMapper keyMapper;
+    private readonly Func<int, bool, bool> keyEventHandler;
 
-    public GBDisplaySdl(int pixelSize = 3, IInputHandler input = null, IKeyMapper keyMapper = null)
+    public GBDisplaySdl(int pixelSize = 3, IInputHandler input = null, IKeyMapper keyMapper = null, Func<int, bool, bool> keyEventHandler = null)
     {
         this.input = input;
         this.keyMapper = keyMapper ?? new DefaultKeyMapper();
+        this.keyEventHandler = keyEventHandler;
 
         if (SDL.SDL_Init(SDL.SDL_INIT_VIDEO) != 0)
             throw new Exception("SDL_Init failed: " + SDL.GetError());
@@ -95,11 +97,15 @@ public class GBDisplaySdl : IDisplay
                 }
                 if (e.type == SDL.SDL_KEYDOWN)
                 {
+                    if (keyEventHandler != null && keyEventHandler(e.key.keysym.sym, true))
+                        continue;
                     if (input != null && keyMapper.TryMapSdlKey(e.key.keysym.sym, out JoypadButton btn))
                         input.SetButton(btn, true);
                 }
                 else if (e.type == SDL.SDL_KEYUP)
                 {
+                    if (keyEventHandler != null && keyEventHandler(e.key.keysym.sym, false))
+                        continue;
                     if (input != null && keyMapper.TryMapSdlKey(e.key.keysym.sym, out JoypadButton btn))
                         input.SetButton(btn, false);
                 }

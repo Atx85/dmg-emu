@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 namespace GB
 {
     // --------------------------
@@ -639,12 +640,89 @@ public class BusRegistersAdapter : IPpuRegisters
         private IPpuRegisters GetRegisters()
         {
             var regsField = typeof(PpuStateMachine)
-                .GetField("regs", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                .GetField("regs", BindingFlags.NonPublic | BindingFlags.Instance);
 
             if (regsField != null && regsField.GetValue(stateMachine) is IPpuRegisters regs)
                 return regs;
 
             throw new InvalidOperationException("Cannot access PPU registers");
         }
+
+        public PpuSnapshot GetState()
+        {
+            var px = new byte[160 * 144];
+            int k = 0;
+            for (int y = 0; y < 144; y++)
+                for (int x = 0; x < 160; x++)
+                    px[k++] = (byte)fb.GetPixel(x, y);
+
+            var smType = typeof(PpuStateMachine);
+            int cyclesRemaining = (int)(smType.GetField("cyclesRemaining", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(stateMachine) ?? 0);
+            bool lcdWasEnabled = (bool)(smType.GetField("lcdWasEnabled", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(stateMachine) ?? false);
+
+            int windowLine = 0;
+            int lastLyRendered = -1;
+            foreach (var r in renderers)
+            {
+                if (r is WindowRenderer wr)
+                {
+                    var wrType = typeof(WindowRenderer);
+                    windowLine = (int)(wrType.GetField("windowLine", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(wr) ?? 0);
+                    lastLyRendered = (int)(wrType.GetField("lastLyRendered", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(wr) ?? -1);
+                    break;
+                }
+            }
+
+            return new PpuSnapshot
+            {
+                Pixels = px,
+                CyclesRemaining = cyclesRemaining,
+                LcdWasEnabled = lcdWasEnabled,
+                WindowLine = windowLine,
+                LastLyRendered = lastLyRendered
+            };
+        }
+
+        public void SetState(PpuSnapshot s)
+        {
+            if (s.Pixels != null)
+            {
+                int k = 0;
+                for (int y = 0; y < 144; y++)
+                {
+                    for (int x = 0; x < 160; x++)
+                    {
+                        if (k >= s.Pixels.Length) return;
+                        fb.SetPixel(x, y, s.Pixels[k++]);
+                    }
+                }
+            }
+
+            var smType = typeof(PpuStateMachine);
+            smType.GetField("cyclesRemaining", BindingFlags.NonPublic | BindingFlags.Instance)?.SetValue(stateMachine, s.CyclesRemaining);
+            smType.GetField("lcdWasEnabled", BindingFlags.NonPublic | BindingFlags.Instance)?.SetValue(stateMachine, s.LcdWasEnabled);
+
+            foreach (var r in renderers)
+            {
+                if (r is WindowRenderer wr)
+                {
+                    var wrType = typeof(WindowRenderer);
+                    wrType.GetField("windowLine", BindingFlags.NonPublic | BindingFlags.Instance)?.SetValue(wr, s.WindowLine);
+                    wrType.GetField("lastLyRendered", BindingFlags.NonPublic | BindingFlags.Instance)?.SetValue(wr, s.LastLyRendered);
+                    break;
+                }
+            }
+
+            OnFrameReady?.Invoke(fb);
+        }
+    }
+
+    public class PpuSnapshot
+    {
+        public byte[] Pixels;
+        public int CyclesRemaining;
+        public bool LcdWasEnabled;
+        public int WindowLine;
+        public int LastLyRendered;
     }
 }

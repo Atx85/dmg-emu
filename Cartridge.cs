@@ -9,7 +9,13 @@ namespace GB {
     void WriteRam(int addr, byte value);
   }
 
-  public class RomOnlyMapper : IMapper
+  public interface IStatefulMapper
+  {
+    MapperState GetState();
+    void SetState(MapperState state);
+  }
+
+  public class RomOnlyMapper : IMapper, IStatefulMapper
   {
     private readonly byte[] rom;
 
@@ -29,9 +35,16 @@ namespace GB {
 
     public byte ReadRam(int addr) => 0xFF;
     public void WriteRam(int addr, byte value) { }
+
+    public MapperState GetState()
+    {
+      return new MapperState { Kind = MapperKind.RomOnly };
+    }
+
+    public void SetState(MapperState state) { }
   }
 
-  public class Mbc1Mapper : IMapper
+  public class Mbc1Mapper : IMapper, IStatefulMapper
   {
     private readonly byte[] rom;
     private readonly byte[] ram;
@@ -118,9 +131,40 @@ namespace GB {
       if (bank == 0) bank = 1;
       return bank;
     }
+
+    public MapperState GetState()
+    {
+      byte[] ramCopy = null;
+      if (ram != null)
+      {
+        ramCopy = new byte[ram.Length];
+        Array.Copy(ram, ramCopy, ram.Length);
+      }
+      return new MapperState
+      {
+        Kind = MapperKind.Mbc1,
+        RamEnabled = ramEnabled,
+        RomBankLow5 = romBankLow5,
+        BankHigh2 = bankHigh2,
+        Mode = mode,
+        Ram = ramCopy
+      };
+    }
+
+    public void SetState(MapperState state)
+    {
+      ramEnabled = state.RamEnabled;
+      romBankLow5 = state.RomBankLow5;
+      bankHigh2 = state.BankHigh2;
+      mode = state.Mode;
+      if (ram != null && state.Ram != null)
+      {
+        Array.Copy(state.Ram, ram, Math.Min(ram.Length, state.Ram.Length));
+      }
+    }
   }
 
-  public class Mbc3Mapper : IMapper
+  public class Mbc3Mapper : IMapper, IStatefulMapper
   {
     private readonly byte[] rom;
     private readonly byte[] ram;
@@ -339,11 +383,71 @@ namespace GB {
           }
       }
     }
+
+    public MapperState GetState()
+    {
+      byte[] ramCopy = null;
+      if (ram != null)
+      {
+        ramCopy = new byte[ram.Length];
+        Array.Copy(ram, ramCopy, ram.Length);
+      }
+      return new MapperState
+      {
+        Kind = MapperKind.Mbc3,
+        Ram = ramCopy,
+        RamEnabled = ramEnabled,
+        RomBank = romBank,
+        RamRtcSelect = ramRtcSelect,
+        RtcSec = rtcSec,
+        RtcMin = rtcMin,
+        RtcHour = rtcHour,
+        RtcDay = rtcDay,
+        RtcHalt = rtcHalt,
+        RtcCarry = rtcCarry,
+        LatchArmed = latchArmed,
+        RtcLatched = rtcLatched,
+        LatSec = latSec,
+        LatMin = latMin,
+        LatHour = latHour,
+        LatDay = latDay,
+        LatCarry = latCarry,
+        LatHalt = latHalt,
+        LastUpdateTicks = lastUpdate.Ticks
+      };
+    }
+
+    public void SetState(MapperState state)
+    {
+      ramEnabled = state.RamEnabled;
+      romBank = state.RomBank == 0 ? 1 : state.RomBank;
+      ramRtcSelect = state.RamRtcSelect;
+      rtcSec = state.RtcSec;
+      rtcMin = state.RtcMin;
+      rtcHour = state.RtcHour;
+      rtcDay = state.RtcDay;
+      rtcHalt = state.RtcHalt;
+      rtcCarry = state.RtcCarry;
+      latchArmed = state.LatchArmed;
+      rtcLatched = state.RtcLatched;
+      latSec = state.LatSec;
+      latMin = state.LatMin;
+      latHour = state.LatHour;
+      latDay = state.LatDay;
+      latCarry = state.LatCarry;
+      latHalt = state.LatHalt;
+      lastUpdate = new DateTime(state.LastUpdateTicks == 0 ? DateTime.UtcNow.Ticks : state.LastUpdateTicks, DateTimeKind.Utc);
+      if (ram != null && state.Ram != null)
+      {
+        Array.Copy(state.Ram, ram, Math.Min(ram.Length, state.Ram.Length));
+      }
+    }
   }
 
   public class Cartridge {
     byte[] rom;
     IMapper mapper;
+    byte typeCode;
 
     public byte Read(int addr)
     {
@@ -362,6 +466,7 @@ namespace GB {
 
     public void load(string path) {
       rom = File.ReadAllBytes(path);
+      typeCode = rom[0x147];
       mapper = CreateMapper(rom);
       /*
          Console.Write($"Title :"); 
@@ -455,5 +560,69 @@ namespace GB {
         default: return 0;
       }
     }
+
+    public CartridgeState GetState()
+    {
+      MapperState mapperState = null;
+      if (mapper is IStatefulMapper stateful)
+      {
+        mapperState = stateful.GetState();
+      }
+      return new CartridgeState
+      {
+        TypeCode = typeCode,
+        MapperState = mapperState
+      };
+    }
+
+    public void SetState(CartridgeState state)
+    {
+      if (mapper is IStatefulMapper stateful && state.MapperState != null)
+      {
+        stateful.SetState(state.MapperState);
+      }
+    }
+  }
+
+  public enum MapperKind : byte
+  {
+    RomOnly = 0,
+    Mbc1 = 1,
+    Mbc3 = 3
+  }
+
+  public class MapperState
+  {
+    public MapperKind Kind;
+    public byte[] Ram;
+
+    public bool RamEnabled;
+    public int RomBankLow5;
+    public int BankHigh2;
+    public int Mode;
+
+    public int RomBank;
+    public int RamRtcSelect;
+    public int RtcSec;
+    public int RtcMin;
+    public int RtcHour;
+    public int RtcDay;
+    public bool RtcHalt;
+    public bool RtcCarry;
+    public bool LatchArmed;
+    public bool RtcLatched;
+    public int LatSec;
+    public int LatMin;
+    public int LatHour;
+    public int LatDay;
+    public bool LatCarry;
+    public bool LatHalt;
+    public long LastUpdateTicks;
+  }
+
+  public class CartridgeState
+  {
+    public byte TypeCode;
+    public MapperState MapperState;
   }
 }
