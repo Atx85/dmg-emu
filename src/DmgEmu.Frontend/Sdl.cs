@@ -1,6 +1,8 @@
 using System;
 using System.Runtime.InteropServices;
 
+namespace DmgEmu.Frontend
+{
 internal static class SDL
 {
     public const uint SDL_INIT_VIDEO = 0x00000020;
@@ -133,4 +135,6 @@ internal static class SDL
         public ushort mod;
         public uint unused;
     }
+}
+
 }

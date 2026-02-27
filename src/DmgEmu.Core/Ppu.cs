@@ -1,6 +1,6 @@
 using System;
 using System.Reflection;
-namespace GB
+namespace DmgEmu.Core
 {
     // --------------------------
     // ENUMS

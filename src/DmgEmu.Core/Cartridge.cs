@@ -1,6 +1,7 @@
 using System;
 using System.IO;
-namespace GB {
+namespace DmgEmu.Core {
+
   public interface IMapper
   {
     byte ReadRom(int addr);

@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 
-namespace GB
+namespace DmgEmu.Core
 {
     public class Bus
     {

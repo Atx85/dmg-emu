@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <AssemblyName>DmgEmu.Core</AssemblyName>
+    <RootNamespace>DmgEmu.Core</RootNamespace>
+  </PropertyGroup>
+
+  <!-- all source files under this directory are compiled by default -->
+</Project>

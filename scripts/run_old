@@ -1,0 +1,4 @@
+#!/bin/bash
+# legacy build helper - left for historical reference only
+# the project now lives under `src/` and you should use `./scripts/run`.
+echo "Please use ./scripts/run instead"

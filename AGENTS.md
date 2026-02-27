@@ -32,12 +32,18 @@
 - Scope: useful custom assembler, not RGBDS-compatible/full Pokémon build toolchain.
 
 ## Build & Run
-- SDL build/run:
-  - `./run-sdl [rom.gb] [--headless] [--max-cycles=N] [--save-state=...] [--load-state=...]`
-- GTK build/run:
-  - `./run [rom.gb] ...`
-- Direct compile (SDL):
-  - `mcs program.cs IDisplay.cs Input.cs Joypad.cs Timer.cs Bus.cs Ppu.cs Dbg.cs Cartridge.cs State.cs Gameboy.cs CpuContract.cs Cpu2Structured.cs GBDisplaySdl.cs Sdl.cs`
+A helper script `scripts/run` compiles the source under `src/` using `mcs` and
+runs the resulting `program.exe`. Example:
+
+```sh
+./scripts/run [options] [rom.gb]
+```
+
+For legacy reference the old compilation commands can be found in
+`scripts/run_old`.
+
+Projects also include `*.csproj` files and can be built with `msbuild` or a
+.NET SDK, though the mono `mcs` workflow remains supported.
 
 ## CPU Test Gate
 - Command: `./check-parity`

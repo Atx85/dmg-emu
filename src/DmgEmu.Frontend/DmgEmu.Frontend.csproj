@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <AssemblyName>DmgEmu.Frontend</AssemblyName>
+    <RootNamespace>DmgEmu.Frontend</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- GTK# for the GTK frontend and SDL2-CS for the SDL backend -->
+    <PackageReference Include="GtkSharp" Version="3.22.25" />
+    <PackageReference Include="SDL2-CS" Version="2.0.234" />
+  </ItemGroup>
+</Project>

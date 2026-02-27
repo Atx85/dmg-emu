@@ -1,4 +1,4 @@
-namespace GB
+namespace DmgEmu.Core
 {
     public enum JoypadButton
     {

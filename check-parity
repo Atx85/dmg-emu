@@ -5,8 +5,10 @@ MAX_CYCLES="${MAX_CYCLES:-100000000}"
 ROM_GLOB="${ROM_GLOB:-roms/cpu_instrs/individual/*.gb}"
 
 compile() {
-  mcs program.cs IDisplay.cs Input.cs Joypad.cs Timer.cs Bus.cs Ppu.cs Dbg.cs Cartridge.cs \
-    State.cs Gameboy.cs CpuContract.cs Cpu2Structured.cs GBDisplaySdl.cs Sdl.cs
+  # compile all source files under src/ using same flags as the helper script
+  local sources
+  sources=$(find src -name "*.cs" | tr '\n' ' ')
+  mcs -define:GTK -pkg:gtk-sharp-3.0 $sources
 }
 
 run_one() {

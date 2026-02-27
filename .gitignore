@@ -1,0 +1,24 @@
+# build artifacts
+/bin/
+/obj/
+program.exe
+*.dll
+*.config
+
+# editor/cache
+*.user
+*.vs
+.idea/
+
+# MonoDevelop
+*.pidb
+
+# macOS
+.DS_Store
+
+# redundant backup files
+redundant/
+
+# ROM files (copyrighted material)
+*.gb
+roms/

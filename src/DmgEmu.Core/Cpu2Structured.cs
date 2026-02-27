@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace GB
+namespace DmgEmu.Core
 {
     // Cpu2 is a structured sketch for a full CPU implementation.
     // It is intentionally incomplete and meant to guide a proper design.

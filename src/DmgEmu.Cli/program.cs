@@ -2,12 +2,14 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Text;
-using System.Reflection;
 using System.Runtime.InteropServices;
-using GB;
+using DmgEmu.Core;
+using DmgEmu.Frontend;
 
-public class Program
+namespace DmgEmu.Cli
 {
+    public class Program
+    {
   enum DisplayBackend
   {
       Sdl,
@@ -142,11 +144,8 @@ gb.ppu.OnFrameReady += fb => display.Update(fb);
 
   static IDisplay CreateDisplayGtk(Gameboy gb)
   {
-    var asm = typeof(Program).Assembly;
-    var t = asm.GetType("GBDisplay");
-    if (t == null)
-      throw new Exception("GBDisplay type not found. Compile with GBDisplay.cs and gtk-sharp.");
-    return (IDisplay)Activator.CreateInstance(t, new object[] { 4, gb.bus.Joypad, null, new Func<uint, bool, bool>(gb.HandleGtkKey) });
+    // the GTK frontend class lives in the Frontend library
+    return new GBDisplay(pixelSize: 4, input: gb.bus.Joypad, keyEventHandler: gb.HandleGtkKey);
   }
 
   static void RunHeadless(Gameboy gb, int maxCycles)
@@ -182,5 +181,6 @@ gb.ppu.OnFrameReady += fb => display.Update(fb);
       bus.Write(0xFF02, 0);
     }
   }
+}
 }
 

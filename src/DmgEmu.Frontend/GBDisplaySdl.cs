@@ -1,8 +1,10 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using GB;
+using DmgEmu.Core;
 
+namespace DmgEmu.Frontend
+{
 public class GBDisplaySdl : IDisplay
 {
     private const int Width = 160;
@@ -169,4 +171,6 @@ public class GBDisplaySdl : IDisplay
         if (window != IntPtr.Zero) SDL.SDL_DestroyWindow(window);
         SDL.SDL_Quit();
     }
+}
+
 }

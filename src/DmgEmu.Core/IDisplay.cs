@@ -1,5 +1,5 @@
 using System;
-using GB;
+using DmgEmu.Core;
 
 public interface IDisplay
 {

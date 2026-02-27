@@ -1,4 +1,4 @@
-namespace GB {
+namespace DmgEmu.Core {
   public class Timer {
     private uint systemCounter = 0; // 16-bit internal counter
     private ushort lastCounter = 0;

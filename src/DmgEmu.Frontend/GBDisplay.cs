@@ -1,8 +1,10 @@
 using Gtk;
 using Cairo;
 using System;
-using GB;
+using DmgEmu.Core;
 
+namespace DmgEmu.Frontend
+{
 public class GBDisplay : IDisplay
 {
     private Window window;
@@ -133,4 +135,6 @@ public class GBDisplay : IDisplay
         if (keyMapper.TryMapGtkKey(args.Event.KeyValue, out JoypadButton btn))
             input.SetButton(btn, false);
     }
+}
+
 }

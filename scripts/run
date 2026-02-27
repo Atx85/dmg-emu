@@ -1,0 +1,12 @@
+#!/bin/bash
+# helper script: compile and run the emulator with Mono
+set -e
+
+# collect all C# source files under src/
+SOURCES=$(find src -name "*.cs" | tr '\n' ' ')
+
+echo "compiling $SOURCES"
+mcs -define:GTK -pkg:gtk-sharp-3.0 $SOURCES -out:program.exe
+
+mono ./program.exe "$@"
+

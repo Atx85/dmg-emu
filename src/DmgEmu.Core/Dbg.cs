@@ -1,6 +1,6 @@
 using System;
 
-namespace GB {
+namespace DmgEmu.Core {
 class Dbg {
   Bus bus;
   string msg;

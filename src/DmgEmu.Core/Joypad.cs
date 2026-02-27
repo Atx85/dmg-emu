@@ -1,6 +1,6 @@
 using System;
 
-namespace GB
+namespace DmgEmu.Core
 {
     public sealed class Joypad : IInputHandler
     {
