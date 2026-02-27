@@ -1,3 +1,0 @@
-
-mcs -pkg:gtk-sharp-2.0 -r:System.Data Calculator.cs -out:Calculator.exe
-mono Calculator.exe
