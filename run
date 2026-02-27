@@ -1,0 +1,1 @@
+mcs -define:GTK -pkg:gtk-sharp-2.0 -pkg:mono-cairo program.cs IDisplay.cs Input.cs Joypad.cs Timer.cs Bus.cs Ppu.cs Dbg.cs Cartridge.cs State.cs Gameboy.cs CpuContract.cs Cpu2Structured.cs GBDisplay.cs GBDisplaySdl.cs Sdl.cs && mono ./program.exe "$@"

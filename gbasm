@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+EXE="$ROOT_DIR/tools/gbasm.exe"
+SRC="$ROOT_DIR/tools/gbasm.cs"
+
+if [ ! -f "$EXE" ] || [ "$SRC" -nt "$EXE" ]; then
+  mcs -out:"$EXE" "$SRC"
+fi
+
+mono "$EXE" "$@"
