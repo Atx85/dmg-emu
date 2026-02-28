@@ -3,7 +3,12 @@
 set -e
 
 # collect all C# source files under src/
-SOURCES=$(find src -name "*.cs" | tr '\n' ' ')
+#SOURCES=$(find src -name "*.cs" | tr '\n' ' ')
+
+SOURCES=$(find src \
+  -path src/DmgEmu.Frontend/DmgEmuUnityDisplay -prune -o \
+  -name "*.cs" -print | tr '\n' ' ')
+
 
 echo "compiling $SOURCES"
 mcs -define:GTK -pkg:gtk-sharp-3.0 $SOURCES -out:program.exe
