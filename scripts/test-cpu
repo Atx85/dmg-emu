@@ -1,0 +1,15 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+OUT="$(mktemp "$ROOT_DIR/cpu-tests.XXXXXX.exe")"
+trap 'rm -f "$OUT"' EXIT
+
+CORE_SOURCES=$(find "$ROOT_DIR/src/DmgEmu.Core" -name "*.cs" | tr '\n' ' ')
+TEST_SOURCE="$ROOT_DIR/tools/cpu-tests.cs"
+
+echo "compiling cpu tests..."
+mcs -r:System.Drawing $CORE_SOURCES "$TEST_SOURCE" -out:"$OUT"
+
+mono "$OUT" "$@"
