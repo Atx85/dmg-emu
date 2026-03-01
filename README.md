@@ -123,7 +123,6 @@ mirror their namespaces.
 
 ## License
 
-This project is licensed under **GPL-2.0-only** (GNU GPL v2 only), similar to
-the Linux kernel. See `LICENSE`.
+This project is licensed under **GPL-2.0-only** (GNU GPL v2 only). See `LICENSE`.
 
 Enjoy developing!
