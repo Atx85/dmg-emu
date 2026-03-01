@@ -1,0 +1,15 @@
+#!/bin/bash
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+OUT="$(mktemp "$ROOT_DIR/bench.XXXXXX.exe")"
+trap 'rm -f "$OUT"' EXIT
+
+CORE_SOURCES=$(find "$ROOT_DIR/src/DmgEmu.Core" -name "*.cs" | tr '\n' ' ')
+TOOL_SOURCE="$ROOT_DIR/tools/cpu-bench.cs"
+
+echo "compiling benchmark..."
+mcs $CORE_SOURCES "$TOOL_SOURCE" -out:"$OUT"
+
+mono "$OUT" "$@"

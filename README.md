@@ -23,6 +23,48 @@ Mono runtime, preserving the behaviour of the original project:
 ./scripts/run [options] [rom.gb]
 ```
 
+CPU benchmark helper:
+
+```sh
+./scripts/bench --bench-seconds=5
+```
+
+CPU test suite (unit + ROM smoke gate):
+
+```sh
+./scripts/test-cpu
+```
+
+If test ROMs are missing, fetch them with:
+
+```sh
+./scripts/fetch-test-roms
+```
+
+On PowerShell:
+
+```powershell
+./scripts/test-cpu.ps1
+```
+
+PowerShell ROM setup:
+
+```powershell
+./scripts/fetch-test-roms.ps1
+```
+
+CPU coverage checklist/strategy is documented in `docs/CPU-COVERAGE.md`.
+Ongoing coverage status notes are in `docs/TEST-COVERAGE-NOTES.md`.
+Use `--require-mem-timing` to make the `mem_timing` suite a hard gate.
+
+Optional `dmg-acid2` headless visual check:
+
+```sh
+./scripts/test-cpu --acid2 --acid2-rom=./gb-test-roms/dmg-acid2.gb --acid2-ref=./test-assets/dmg-acid2/reference-dmg.png
+```
+
+Reference notes are stored in `docs/DMG-ACID2.md`.
+
 > The emulator accepts the same command-line arguments as the legacy
 > `program.exe` entrypoint (shown here with their defaults):
 >
@@ -78,5 +120,10 @@ mirror their namespaces.
   longer part of the build.
 - The `run_old` script has been kept for reference but is superseded by
   `scripts/run`.
+
+## License
+
+This project is licensed under **GPL-2.0-only** (GNU GPL v2 only), similar to
+the Linux kernel. See `LICENSE`.
 
 Enjoy developing!
