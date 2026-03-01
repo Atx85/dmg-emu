@@ -17,42 +17,19 @@ namespace DmgEmu.Core {
     }
 
     public void Tick(int cycles) {
-      lastCounter = (ushort)systemCounter;
-      systemCounter = (systemCounter + (uint)cycles) & 0xFFFF;
-
-      bool timerEnabled = (tac & 0x04) != 0;
-      if (timerEnabled) {
-        int bit; 
-        int sel = (tac & 0x03); 
-        switch (sel) {
-          case  0: bit = 9; break;  // 4096 Hz
-          case  1: bit = 3; break;  // 262144 Hz
-          case  2: bit = 5; break;  // 65536 Hz
-          case  3:  // 16384 Hz
-          default: bit = 7; break; 
-        };
-
-        bool prev = ((lastCounter >> bit) & 1) != 0;
-        bool curr = ((systemCounter >> bit) & 1) != 0;
-
-        // Detect falling edge
-        if (prev && !curr) {
-          IncrementTIMA();
-        }
-      }
-
-      if (overflowPending) {
-        if (--overflowDelay == 0) {
-          tima = tma;
-          byte flags = bus.Read(0xFF0F);
-          bus.Write(0xFF0F, (byte)(flags | 0x04));
-          overflowPending = false;
-        }
+      for (int i = 0; i < cycles; i++) {
+        StepOneCycle();
       }
     }
 
     public byte ReadDIV() => (byte)(systemCounter >> 8);
-    public void WriteDIV(byte val) { systemCounter = 0; }
+    public void WriteDIV(byte val) {
+      bool prevSignal = TimerSignal(systemCounter, tac);
+      systemCounter = 0;
+      if (prevSignal && !TimerSignal(systemCounter, tac)) {
+        IncrementTIMA();
+      }
+    }
 
     public byte ReadTIMA() => tima;
     public void WriteTIMA(byte val) { tima = val; }
@@ -61,7 +38,13 @@ namespace DmgEmu.Core {
     public void WriteTMA(byte val) { tma = val;} 
 
     public byte ReadTAC() => tac;
-    public void WriteTAC(byte val) {tac = val; } 
+    public void WriteTAC(byte val) {
+      bool prevSignal = TimerSignal(systemCounter, tac);
+      tac = (byte)(val & 0x07);
+      if (prevSignal && !TimerSignal(systemCounter, tac)) {
+        IncrementTIMA();
+      }
+    } 
     private void IncrementTIMA() {
       if (tima == 0xFF) {
         tima = 0x00;
@@ -95,6 +78,41 @@ namespace DmgEmu.Core {
       tac = s.Tac;
       overflowPending = s.OverflowPending;
       overflowDelay = s.OverflowDelay;
+    }
+
+    private void StepOneCycle() {
+      ushort prevCounter = (ushort)systemCounter;
+      systemCounter = (systemCounter + 1u) & 0xFFFF;
+      lastCounter = prevCounter;
+
+      bool prevSignal = TimerSignal(prevCounter, tac);
+      bool currSignal = TimerSignal(systemCounter, tac);
+      if (prevSignal && !currSignal) {
+        IncrementTIMA();
+      }
+
+      if (overflowPending) {
+        if (--overflowDelay == 0) {
+          tima = tma;
+          byte flags = bus.Read(0xFF0F);
+          bus.Write(0xFF0F, (byte)(flags | 0x04));
+          overflowPending = false;
+        }
+      }
+    }
+
+    private static bool TimerSignal(uint counter, byte tacValue) {
+      bool timerEnabled = (tacValue & 0x04) != 0;
+      if (!timerEnabled) return false;
+
+      int bit;
+      switch (tacValue & 0x03) {
+        case 0: bit = 9; break;
+        case 1: bit = 3; break;
+        case 2: bit = 5; break;
+        default: bit = 7; break;
+      }
+      return ((counter >> bit) & 1u) != 0;
     }
   }
 

@@ -14,9 +14,9 @@ namespace DmgEmu.Core
     {
         public Cpu2Structured Inner { get; }
 
-        public Cpu2StructuredCoreAdapter(Bus bus)
+        public Cpu2StructuredCoreAdapter(Bus bus, IClock clock = null)
         {
-            Inner = new Cpu2Structured(new BusCpuBus(bus), new NullCpuClock(), new BusInterruptController(bus));
+            Inner = new Cpu2Structured(new BusCpuBus(bus), clock ?? new NullCpuClock(), new BusInterruptController(bus));
         }
 
         public int Step() => Inner.Step();

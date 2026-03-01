@@ -25,9 +25,10 @@ public class Gameboy
         Backend = cpuBackend;
         var cart = new Cartridge();
         bus = new Bus(ref cart);
+        var cpuClock = new BusTickClock(this);
         if (cpuBackend == CpuBackend.Cpu2Structured)
         {
-            var adapter = new Cpu2StructuredCoreAdapter(bus);
+            var adapter = new Cpu2StructuredCoreAdapter(bus, cpuClock);
             cpu2StructuredAdapter = adapter;
             cpu2Structured = adapter.Inner;
             cpuCore = adapter;
@@ -60,9 +61,10 @@ public class Gameboy
         var cart = new Cartridge();
         cart.load(path);
         bus = new Bus(ref cart);
+        var cpuClock = new BusTickClock(this);
         if (cpuBackend == CpuBackend.Cpu2Structured)
         {
-            var adapter = new Cpu2StructuredCoreAdapter(bus);
+            var adapter = new Cpu2StructuredCoreAdapter(bus, cpuClock);
             cpu2StructuredAdapter = adapter;
             cpu2Structured = adapter.Inner;
             cpuCore = adapter;
@@ -99,13 +101,6 @@ public class Gameboy
         {
             int used = cpuCore.Step();
             remaining -= used;
-
-            for (int i = 0; i < used; i++)
-            {
-                ppu.Step(1);
-                bus.timer.Tick(1);
-                bus.TickDma(1);
-            }
         }
     }
 
@@ -282,6 +277,26 @@ public class Gameboy
     public bool HandleGtkKey(uint keyVal, bool pressed)
     {
         return HandleKey(InputKeySource.Gtk, unchecked((int)keyVal), pressed);
+    }
+
+    private sealed class BusTickClock : IClock
+    {
+        private readonly Gameboy gb;
+
+        public BusTickClock(Gameboy gb)
+        {
+            this.gb = gb;
+        }
+
+        public void Advance(int cycles)
+        {
+            for (int i = 0; i < cycles; i++)
+            {
+                gb.ppu.Step(1);
+                gb.bus.timer.Tick(1);
+                gb.bus.TickDma(1);
+            }
+        }
     }
 
 }
