@@ -11,6 +11,7 @@ namespace DmgEmu.Core
         private readonly IClock clock;
         private readonly IInterruptController interrupts;
         private readonly ITraceSink trace;
+        private int busCyclesThisStep;
 
         private Registers regs;
         private CpuState state;
@@ -21,7 +22,7 @@ namespace DmgEmu.Core
 
         public Cpu2Structured(ICpuBus bus, IClock clock, IInterruptController interrupts, ITraceSink trace = null)
         {
-            this.bus = bus;
+            this.bus = new TimedCpuBus(bus, OnBusAccess);
             this.clock = clock;
             this.interrupts = interrupts;
             this.trace = trace ?? new NullTraceSink();
@@ -36,6 +37,7 @@ namespace DmgEmu.Core
         // Step one instruction (or interrupt entry) and return cycles used.
         public int Step()
         {
+            busCyclesThisStep = 0;
             if (state.EiPending)
             {
                 state.IME = true;
@@ -44,13 +46,13 @@ namespace DmgEmu.Core
 
             if (TryHandleInterrupt(out int intCycles))
             {
-                clock.Advance(intCycles);
+                AdvanceRemainder(intCycles);
                 return intCycles;
             }
 
             if (state.Halted)
             {
-                clock.Advance(4);
+                AdvanceRemainder(4);
                 return 4;
             }
 
@@ -63,7 +65,7 @@ namespace DmgEmu.Core
             trace.Trace(regs, instr);
 
             int cycles = executor.Execute(instr, operands, bus, ref regs, ref state, interrupts);
-            clock.Advance(cycles);
+            AdvanceRemainder(cycles);
             return cycles;
         }
 
@@ -144,6 +146,50 @@ namespace DmgEmu.Core
             bus.Write(regs.SP, (byte)(value >> 8));
             regs.SP--;
             bus.Write(regs.SP, (byte)(value & 0xFF));
+        }
+
+        private void OnBusAccess(int cycles)
+        {
+            busCyclesThisStep += cycles;
+            clock.Advance(cycles);
+        }
+
+        private void AdvanceRemainder(int totalCycles)
+        {
+            int remaining = totalCycles - busCyclesThisStep;
+            if (remaining > 0)
+            {
+                clock.Advance(remaining);
+            }
+            else if (remaining < 0)
+            {
+                // Clamp over-accounting to keep runtime stable while timing work is in progress.
+                busCyclesThisStep = totalCycles;
+            }
+        }
+    }
+
+    internal sealed class TimedCpuBus : ICpuBus
+    {
+        private readonly ICpuBus inner;
+        private readonly Action<int> onAccess;
+
+        public TimedCpuBus(ICpuBus inner, Action<int> onAccess)
+        {
+            this.inner = inner;
+            this.onAccess = onAccess;
+        }
+
+        public byte Read(ushort addr)
+        {
+            onAccess?.Invoke(4);
+            return inner.Read(addr);
+        }
+
+        public void Write(ushort addr, byte value)
+        {
+            onAccess?.Invoke(4);
+            inner.Write(addr, value);
         }
     }
 

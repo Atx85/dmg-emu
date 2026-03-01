@@ -200,7 +200,11 @@ public static class CpuTestsProgram
             TestLdhAndAbsoluteLoadStorePaths,
             TestStopInstructionStateAndCycle,
             TestCycleTraceRegression,
-            TestDeterministicTraceDigest
+            TestDeterministicTraceDigest,
+            TestTimerDivWriteFallingEdgeIncrement,
+            TestTimerTacWriteFallingEdgeIncrement,
+            TestCpuClockAccountingByMemoryAccessKind,
+            TestGameboyTickCyclesDoesNotDoubleAdvance
         };
 
         Console.WriteLine("unit tests:");
@@ -883,6 +887,156 @@ public static class CpuTestsProgram
         // Regression anchor for deterministic execution of the above trace.
         const ulong Expected = 0x5B462445E8455093UL;
         AssertEq(hash, Expected, "Deterministic trace digest mismatch");
+    }
+
+    private sealed class SpyClock : IClock
+    {
+        public int TotalCycles;
+        public int Calls;
+
+        public void Advance(int cycles)
+        {
+            Calls++;
+            TotalCycles += cycles;
+        }
+    }
+
+    private sealed class CountingBus : ICpuBus
+    {
+        private readonly byte[] mem = new byte[0x10000];
+        public int Reads;
+        public int Writes;
+
+        public byte Read(ushort addr)
+        {
+            Reads++;
+            return mem[addr];
+        }
+
+        public void Write(ushort addr, byte value)
+        {
+            Writes++;
+            mem[addr] = value;
+        }
+
+        public void Load(ushort start, params byte[] bytes)
+        {
+            for (int i = 0; i < bytes.Length; i++)
+                mem[start + i] = bytes[i];
+        }
+
+        public void Set(ushort addr, byte value)
+        {
+            mem[addr] = value;
+        }
+    }
+
+    private static void TestTimerDivWriteFallingEdgeIncrement()
+    {
+        var gb = new Gameboy();
+        var t = gb.bus.timer;
+
+        var st = t.GetState();
+        st.SystemCounter = 0x0008; // bit 3 = 1
+        st.LastCounter = 0x0008;
+        st.Tac = 0x05; // enable + select bit 3
+        st.Tima = 0x10;
+        st.Tma = 0x00;
+        st.OverflowPending = false;
+        st.OverflowDelay = 0;
+        t.SetState(st);
+
+        t.WriteDIV(0x00); // forces signal high->low, should tick TIMA once
+        AssertEq(t.ReadTIMA(), (byte)0x11, "DIV write falling edge should increment TIMA");
+    }
+
+    private static void TestTimerTacWriteFallingEdgeIncrement()
+    {
+        var gb = new Gameboy();
+        var t = gb.bus.timer;
+
+        var st = t.GetState();
+        st.SystemCounter = 0x0200; // bit 9 = 1
+        st.LastCounter = 0x0200;
+        st.Tac = 0x04; // enable + select bit 9
+        st.Tima = 0x22;
+        st.OverflowPending = false;
+        st.OverflowDelay = 0;
+        t.SetState(st);
+
+        t.WriteTAC(0x00); // disable timer => signal high->low
+        AssertEq(t.ReadTIMA(), (byte)0x23, "TAC write falling edge should increment TIMA");
+    }
+
+    private static void TestCpuClockAccountingByMemoryAccessKind()
+    {
+        // NOP: one fetch read => 4 cycles
+        var busNop = new CountingBus();
+        busNop.Load(0x0100, 0x00);
+        var clkNop = new SpyClock();
+        var cpuNop = new Cpu2Structured(busNop, clkNop, new TestInterrupts());
+        int cNop = cpuNop.Step();
+        AssertEq(cNop, 4, "NOP step cycles mismatch");
+        AssertEq(clkNop.TotalCycles, 4, "NOP clock cycles mismatch");
+        AssertEq(busNop.Reads, 1, "NOP bus read count mismatch");
+        AssertEq(busNop.Writes, 0, "NOP bus write count mismatch");
+
+        // LD A,(HL): fetch + operand read => 8 cycles
+        var busRead = new CountingBus();
+        busRead.Load(0x0100, 0x7E); // LD A,(HL)
+        busRead.Set(0xC000, 0x5A);
+        var clkRead = new SpyClock();
+        var cpuRead = new Cpu2Structured(busRead, clkRead, new TestInterrupts());
+        var sRead = cpuRead.GetState();
+        sRead.H = 0xC0; sRead.L = 0x00;
+        cpuRead.SetState(sRead);
+        int cRead = cpuRead.Step();
+        AssertEq(cRead, 8, "LD A,(HL) step cycles mismatch");
+        AssertEq(clkRead.TotalCycles, 8, "LD A,(HL) clock cycles mismatch");
+        AssertEq(busRead.Reads, 2, "LD A,(HL) bus read count mismatch");
+        AssertEq(busRead.Writes, 0, "LD A,(HL) bus write count mismatch");
+
+        // LD (HL),A: fetch + operand write => 8 cycles
+        var busWrite = new CountingBus();
+        busWrite.Load(0x0100, 0x77); // LD (HL),A
+        var clkWrite = new SpyClock();
+        var cpuWrite = new Cpu2Structured(busWrite, clkWrite, new TestInterrupts());
+        var sWrite = cpuWrite.GetState();
+        sWrite.H = 0xC0; sWrite.L = 0x00; sWrite.A = 0x3C;
+        cpuWrite.SetState(sWrite);
+        int cWrite = cpuWrite.Step();
+        AssertEq(cWrite, 8, "LD (HL),A step cycles mismatch");
+        AssertEq(clkWrite.TotalCycles, 8, "LD (HL),A clock cycles mismatch");
+        AssertEq(busWrite.Reads, 1, "LD (HL),A bus read count mismatch");
+        AssertEq(busWrite.Writes, 1, "LD (HL),A bus write count mismatch");
+
+        // INC (HL): fetch + read + write => 12 cycles
+        var busRmw = new CountingBus();
+        busRmw.Load(0x0100, 0x34); // INC (HL)
+        busRmw.Set(0xC000, 0x0F);
+        var clkRmw = new SpyClock();
+        var cpuRmw = new Cpu2Structured(busRmw, clkRmw, new TestInterrupts());
+        var sRmw = cpuRmw.GetState();
+        sRmw.H = 0xC0; sRmw.L = 0x00;
+        cpuRmw.SetState(sRmw);
+        int cRmw = cpuRmw.Step();
+        AssertEq(cRmw, 12, "INC (HL) step cycles mismatch");
+        AssertEq(clkRmw.TotalCycles, 12, "INC (HL) clock cycles mismatch");
+        AssertEq(busRmw.Reads, 2, "INC (HL) bus read count mismatch");
+        AssertEq(busRmw.Writes, 1, "INC (HL) bus write count mismatch");
+    }
+
+    private static void TestGameboyTickCyclesDoesNotDoubleAdvance()
+    {
+        string rom = Path.Combine(FindDefaultRomDir(), "01-special.gb");
+        if (!File.Exists(rom))
+            throw new TestFailure("Missing ROM for integration timing test: " + rom);
+
+        var gb = new Gameboy(rom, CpuBackend.Cpu2Structured);
+        uint before = gb.bus.timer.GetState().SystemCounter;
+        gb.TickCycles(4); // one NOP worth of cycles from power-on stream
+        uint after = gb.bus.timer.GetState().SystemCounter;
+        AssertEq((int)((after - before) & 0xFFFF), 4, "Gameboy.TickCycles should advance timer exactly once per CPU cycle");
     }
 
     private static string FindDefaultRomDir()
