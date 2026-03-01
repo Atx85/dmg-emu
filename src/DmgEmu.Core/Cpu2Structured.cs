@@ -11,6 +11,7 @@ namespace DmgEmu.Core
         private readonly IClock clock;
         private readonly IInterruptController interrupts;
         private readonly ITraceSink trace;
+        private readonly bool traceEnabled;
         private int busCyclesThisStep;
 
         private Registers regs;
@@ -22,10 +23,11 @@ namespace DmgEmu.Core
 
         public Cpu2Structured(ICpuBus bus, IClock clock, IInterruptController interrupts, ITraceSink trace = null)
         {
-            this.bus = new TimedCpuBus(bus, OnBusAccess);
+            this.bus = new TimedCpuBus(bus, this);
             this.clock = clock;
             this.interrupts = interrupts;
             this.trace = trace ?? new NullTraceSink();
+            traceEnabled = !(this.trace is NullTraceSink);
 
             regs = Registers.PowerOn();
             state = CpuState.PowerOn();
@@ -60,9 +62,22 @@ namespace DmgEmu.Core
             byte opcode = bus.Read(pc);
             regs.PC++;
 
+            if (TryFastExecute(opcode, out int fastCycles))
+            {
+                AdvanceRemainder(fastCycles);
+                return fastCycles;
+            }
+
             Instruction instr = decoder.Decode(opcode, bus, ref regs);
-            DecodedOperands operands = operandFetcher.Fetch(instr, bus, ref regs);
-            trace.Trace(regs, instr);
+            DecodedOperands operands = default(DecodedOperands);
+            if (instr.Mode == AddressingMode.Imm8 ||
+                instr.Mode == AddressingMode.Imm16 ||
+                instr.Mode == AddressingMode.HighRamImm8 ||
+                instr.Mode == AddressingMode.HighRamRegC)
+            {
+                operands = operandFetcher.Fetch(instr, bus, ref regs);
+            }
+            if (traceEnabled) trace.Trace(regs, instr);
 
             int cycles = executor.Execute(instr, operands, bus, ref regs, ref state, interrupts);
             AdvanceRemainder(cycles);
@@ -148,7 +163,7 @@ namespace DmgEmu.Core
             bus.Write(regs.SP, (byte)(value & 0xFF));
         }
 
-        private void OnBusAccess(int cycles)
+        internal void OnBusAccess(int cycles)
         {
             busCyclesThisStep += cycles;
             clock.Advance(cycles);
@@ -167,28 +182,260 @@ namespace DmgEmu.Core
                 busCyclesThisStep = totalCycles;
             }
         }
+
+        private bool TryFastExecute(byte opcode, out int cycles)
+        {
+            cycles = 0;
+
+            // NOP is common and has no operand fetch path.
+            if (opcode == 0x00)
+            {
+                cycles = 4;
+                return true;
+            }
+
+            // LD r,r matrix except HALT.
+            if (opcode >= 0x40 && opcode <= 0x7F && opcode != 0x76)
+            {
+                int dst = (opcode >> 3) & 0x07;
+                int src = opcode & 0x07;
+                byte value = ReadRegOrHlFast(src);
+                WriteRegOrHlFast(dst, value);
+                cycles = (dst == 6 || src == 6) ? 8 : 4;
+                return true;
+            }
+
+            // ALU A,r matrix.
+            if (opcode >= 0x80 && opcode <= 0xBF)
+            {
+                int src = opcode & 0x07;
+                byte value = ReadRegOrHlFast(src);
+                ExecAluAFast(opcode, value);
+                cycles = (src == 6) ? 8 : 4;
+                return true;
+            }
+
+            // LD r,d8 family used frequently in setup loops.
+            if (opcode == 0x06 || opcode == 0x0E || opcode == 0x16 || opcode == 0x1E ||
+                opcode == 0x26 || opcode == 0x2E || opcode == 0x3E)
+            {
+                byte imm = bus.Read(regs.PC);
+                regs.PC++;
+                switch (opcode)
+                {
+                    case 0x06: regs.B = imm; break;
+                    case 0x0E: regs.C = imm; break;
+                    case 0x16: regs.D = imm; break;
+                    case 0x1E: regs.E = imm; break;
+                    case 0x26: regs.H = imm; break;
+                    case 0x2E: regs.L = imm; break;
+                    case 0x3E: regs.A = imm; break;
+                }
+                cycles = 8;
+                return true;
+            }
+
+            // Common register inc/dec and 16-bit pointer inc/dec.
+            if (opcode == 0x04 || opcode == 0x05 || opcode == 0x0C || opcode == 0x0D ||
+                opcode == 0x14 || opcode == 0x15 || opcode == 0x1C || opcode == 0x1D ||
+                opcode == 0x24 || opcode == 0x25 || opcode == 0x2C || opcode == 0x2D ||
+                opcode == 0x3C || opcode == 0x3D)
+            {
+                switch (opcode)
+                {
+                    case 0x04: regs.B = Inc8Fast(regs.B); break;
+                    case 0x05: regs.B = Dec8Fast(regs.B); break;
+                    case 0x0C: regs.C = Inc8Fast(regs.C); break;
+                    case 0x0D: regs.C = Dec8Fast(regs.C); break;
+                    case 0x14: regs.D = Inc8Fast(regs.D); break;
+                    case 0x15: regs.D = Dec8Fast(regs.D); break;
+                    case 0x1C: regs.E = Inc8Fast(regs.E); break;
+                    case 0x1D: regs.E = Dec8Fast(regs.E); break;
+                    case 0x24: regs.H = Inc8Fast(regs.H); break;
+                    case 0x25: regs.H = Dec8Fast(regs.H); break;
+                    case 0x2C: regs.L = Inc8Fast(regs.L); break;
+                    case 0x2D: regs.L = Dec8Fast(regs.L); break;
+                    case 0x3C: regs.A = Inc8Fast(regs.A); break;
+                    case 0x3D: regs.A = Dec8Fast(regs.A); break;
+                }
+                cycles = 4;
+                return true;
+            }
+
+            if (opcode == 0x03 || opcode == 0x0B || opcode == 0x13 || opcode == 0x1B ||
+                opcode == 0x23 || opcode == 0x2B || opcode == 0x33 || opcode == 0x3B)
+            {
+                switch (opcode)
+                {
+                    case 0x03: regs.BC++; break;
+                    case 0x0B: regs.BC--; break;
+                    case 0x13: regs.DE++; break;
+                    case 0x1B: regs.DE--; break;
+                    case 0x23: regs.HL++; break;
+                    case 0x2B: regs.HL--; break;
+                    case 0x33: regs.SP++; break;
+                    case 0x3B: regs.SP--; break;
+                }
+                cycles = 8;
+                return true;
+            }
+
+            // JP a16 loop anchors.
+            if (opcode == 0xC3)
+            {
+                byte lo = bus.Read(regs.PC++);
+                byte hi = bus.Read(regs.PC++);
+                ushort imm16 = (ushort)(lo | (hi << 8));
+                regs.PC = imm16;
+                cycles = 16;
+                return true;
+            }
+
+            return false;
+        }
+
+        private byte ReadRegOrHlFast(int idx)
+        {
+            switch (idx)
+            {
+                case 0: return regs.B;
+                case 1: return regs.C;
+                case 2: return regs.D;
+                case 3: return regs.E;
+                case 4: return regs.H;
+                case 5: return regs.L;
+                case 6: return bus.Read(regs.HL);
+                default: return regs.A;
+            }
+        }
+
+        private void WriteRegOrHlFast(int idx, byte value)
+        {
+            switch (idx)
+            {
+                case 0: regs.B = value; break;
+                case 1: regs.C = value; break;
+                case 2: regs.D = value; break;
+                case 3: regs.E = value; break;
+                case 4: regs.H = value; break;
+                case 5: regs.L = value; break;
+                case 6: bus.Write(regs.HL, value); break;
+                case 7: regs.A = value; break;
+            }
+        }
+
+        private byte Inc8Fast(byte value)
+        {
+            byte result = (byte)(value + 1);
+            byte f = (byte)(regs.F & 0x10); // preserve carry
+            if (result == 0) f |= 0x80;
+            if (((value & 0x0F) + 1) > 0x0F) f |= 0x20;
+            regs.F = (byte)(f & 0xF0);
+            return result;
+        }
+
+        private byte Dec8Fast(byte value)
+        {
+            byte result = (byte)(value - 1);
+            byte f = (byte)((regs.F & 0x10) | 0x40); // preserve carry, set N
+            if (result == 0) f |= 0x80;
+            if ((value & 0x0F) == 0) f |= 0x20;
+            regs.F = (byte)(f & 0xF0);
+            return result;
+        }
+
+        private bool CarryFlagFast() => (regs.F & 0x10) != 0;
+
+        private void SetFlagsZnHcFast(bool z, bool n, bool h, bool c)
+        {
+            byte f = 0;
+            if (z) f |= 0x80;
+            if (n) f |= 0x40;
+            if (h) f |= 0x20;
+            if (c) f |= 0x10;
+            regs.F = (byte)(f & 0xF0);
+        }
+
+        private void ExecAluAFast(byte opcode, byte value)
+        {
+            byte a = regs.A;
+            int group = (opcode >> 3) & 0x07;
+
+            switch (group)
+            {
+                case 0: // ADD A,r
+                {
+                    int r = a + value;
+                    regs.A = (byte)r;
+                    SetFlagsZnHcFast(regs.A == 0, false, ((a & 0x0F) + (value & 0x0F)) > 0x0F, r > 0xFF);
+                    return;
+                }
+                case 1: // ADC A,r
+                {
+                    int c = CarryFlagFast() ? 1 : 0;
+                    int r = a + value + c;
+                    regs.A = (byte)r;
+                    SetFlagsZnHcFast(regs.A == 0, false, ((a & 0x0F) + (value & 0x0F) + c) > 0x0F, r > 0xFF);
+                    return;
+                }
+                case 2: // SUB A,r
+                {
+                    int r = a - value;
+                    regs.A = (byte)r;
+                    SetFlagsZnHcFast(regs.A == 0, true, (a & 0x0F) < (value & 0x0F), r < 0);
+                    return;
+                }
+                case 3: // SBC A,r
+                {
+                    int c = CarryFlagFast() ? 1 : 0;
+                    int r = a - value - c;
+                    regs.A = (byte)r;
+                    SetFlagsZnHcFast(regs.A == 0, true, (a & 0x0F) < ((value & 0x0F) + c), a < (value + c));
+                    return;
+                }
+                case 4: // AND A,r
+                    regs.A = (byte)(a & value);
+                    SetFlagsZnHcFast(regs.A == 0, false, true, false);
+                    return;
+                case 5: // XOR A,r
+                    regs.A = (byte)(a ^ value);
+                    SetFlagsZnHcFast(regs.A == 0, false, false, false);
+                    return;
+                case 6: // OR A,r
+                    regs.A = (byte)(a | value);
+                    SetFlagsZnHcFast(regs.A == 0, false, false, false);
+                    return;
+                case 7: // CP A,r
+                {
+                    int r = a - value;
+                    SetFlagsZnHcFast(((byte)r) == 0, true, (a & 0x0F) < (value & 0x0F), r < 0);
+                    return;
+                }
+            }
+        }
+
     }
 
     internal sealed class TimedCpuBus : ICpuBus
     {
         private readonly ICpuBus inner;
-        private readonly Action<int> onAccess;
+        private readonly Cpu2Structured owner;
 
-        public TimedCpuBus(ICpuBus inner, Action<int> onAccess)
+        public TimedCpuBus(ICpuBus inner, Cpu2Structured owner)
         {
             this.inner = inner;
-            this.onAccess = onAccess;
+            this.owner = owner;
         }
 
         public byte Read(ushort addr)
         {
-            onAccess?.Invoke(4);
+            owner.OnBusAccess(4);
             return inner.Read(addr);
         }
 
         public void Write(ushort addr, byte value)
         {
-            onAccess?.Invoke(4);
+            owner.OnBusAccess(4);
             inner.Write(addr, value);
         }
     }
@@ -366,13 +613,13 @@ namespace DmgEmu.Core
 
     public sealed class InstructionDecoder
     {
-        private readonly Dictionary<byte, Instruction> table;
-        private readonly Dictionary<byte, Instruction> cbTable;
+        private readonly Instruction[] table;
+        private readonly bool[] tableSet;
 
         public InstructionDecoder()
         {
-            table = new Dictionary<byte, Instruction>();
-            cbTable = new Dictionary<byte, Instruction>();
+            table = new Instruction[256];
+            tableSet = new bool[256];
             SeedMinimal();
         }
 
@@ -725,8 +972,9 @@ namespace DmgEmu.Core
                 };
             }
 
-            if (!table.TryGetValue(opcode, out var instr))
-                instr = new Instruction { Opcode = opcode, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "??" };
+            Instruction instr;
+            if (tableSet[opcode]) instr = table[opcode];
+            else instr = new Instruction { Opcode = opcode, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "??" };
 
             if (instr.Mnemonic.Contains("d8"))
             {
@@ -747,41 +995,47 @@ namespace DmgEmu.Core
             // Implementation guide: expand this table to include all opcodes.
             // For each opcode, fill in Mnemonic, Kind, Cycles, and Mode.
             // Use Mode + operands to keep execution logic consistent.
-            table[0x00] = new Instruction { Opcode = 0x00, Kind = InstructionKind.Nop, Cycles = 4, Mnemonic = "NOP", Mode = AddressingMode.None };
-            table[0x01] = new Instruction { Opcode = 0x01, Kind = InstructionKind.Ld, Cycles = 12, Mnemonic = "LD BC,d16", Mode = AddressingMode.Imm16 };
-            table[0x03] = new Instruction { Opcode = 0x03, Kind = InstructionKind.Misc, Cycles = 8, Mnemonic = "INC BC", Mode = AddressingMode.None };
-            table[0x04] = new Instruction { Opcode = 0x04, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "INC B", Mode = AddressingMode.None };
-            table[0x06] = new Instruction { Opcode = 0x06, Kind = InstructionKind.Ld, Cycles = 8, Mnemonic = "LD B,d8", Mode = AddressingMode.Imm8 };
-            table[0x05] = new Instruction { Opcode = 0x05, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "DEC B", Mode = AddressingMode.None };
-            table[0x0B] = new Instruction { Opcode = 0x0B, Kind = InstructionKind.Misc, Cycles = 8, Mnemonic = "DEC BC", Mode = AddressingMode.None };
-            table[0x0C] = new Instruction { Opcode = 0x0C, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "INC C", Mode = AddressingMode.None };
-            table[0x0E] = new Instruction { Opcode = 0x0E, Kind = InstructionKind.Ld, Cycles = 8, Mnemonic = "LD C,d8", Mode = AddressingMode.Imm8 };
-            table[0x0D] = new Instruction { Opcode = 0x0D, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "DEC C", Mode = AddressingMode.None };
-            table[0x11] = new Instruction { Opcode = 0x11, Kind = InstructionKind.Ld, Cycles = 12, Mnemonic = "LD DE,d16", Mode = AddressingMode.Imm16 };
-            table[0x13] = new Instruction { Opcode = 0x13, Kind = InstructionKind.Misc, Cycles = 8, Mnemonic = "INC DE", Mode = AddressingMode.None };
-            table[0x14] = new Instruction { Opcode = 0x14, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "INC D", Mode = AddressingMode.None };
-            table[0x16] = new Instruction { Opcode = 0x16, Kind = InstructionKind.Ld, Cycles = 8, Mnemonic = "LD D,d8", Mode = AddressingMode.Imm8 };
-            table[0x15] = new Instruction { Opcode = 0x15, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "DEC D", Mode = AddressingMode.None };
-            table[0x1B] = new Instruction { Opcode = 0x1B, Kind = InstructionKind.Misc, Cycles = 8, Mnemonic = "DEC DE", Mode = AddressingMode.None };
-            table[0x1C] = new Instruction { Opcode = 0x1C, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "INC E", Mode = AddressingMode.None };
-            table[0x1E] = new Instruction { Opcode = 0x1E, Kind = InstructionKind.Ld, Cycles = 8, Mnemonic = "LD E,d8", Mode = AddressingMode.Imm8 };
-            table[0x1D] = new Instruction { Opcode = 0x1D, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "DEC E", Mode = AddressingMode.None };
-            table[0x21] = new Instruction { Opcode = 0x21, Kind = InstructionKind.Ld, Cycles = 12, Mnemonic = "LD HL,d16", Mode = AddressingMode.Imm16 };
-            table[0x23] = new Instruction { Opcode = 0x23, Kind = InstructionKind.Misc, Cycles = 8, Mnemonic = "INC HL", Mode = AddressingMode.None };
-            table[0x24] = new Instruction { Opcode = 0x24, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "INC H", Mode = AddressingMode.None };
-            table[0x26] = new Instruction { Opcode = 0x26, Kind = InstructionKind.Ld, Cycles = 8, Mnemonic = "LD H,d8", Mode = AddressingMode.Imm8 };
-            table[0x25] = new Instruction { Opcode = 0x25, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "DEC H", Mode = AddressingMode.None };
-            table[0x2B] = new Instruction { Opcode = 0x2B, Kind = InstructionKind.Misc, Cycles = 8, Mnemonic = "DEC HL", Mode = AddressingMode.None };
-            table[0x2C] = new Instruction { Opcode = 0x2C, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "INC L", Mode = AddressingMode.None };
-            table[0x2E] = new Instruction { Opcode = 0x2E, Kind = InstructionKind.Ld, Cycles = 8, Mnemonic = "LD L,d8", Mode = AddressingMode.Imm8 };
-            table[0x2D] = new Instruction { Opcode = 0x2D, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "DEC L", Mode = AddressingMode.None };
-            table[0x31] = new Instruction { Opcode = 0x31, Kind = InstructionKind.Ld, Cycles = 12, Mnemonic = "LD SP,d16", Mode = AddressingMode.Imm16 };
-            table[0x33] = new Instruction { Opcode = 0x33, Kind = InstructionKind.Misc, Cycles = 8, Mnemonic = "INC SP", Mode = AddressingMode.None };
-            table[0x3C] = new Instruction { Opcode = 0x3C, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "INC A", Mode = AddressingMode.None };
-            table[0x3E] = new Instruction { Opcode = 0x3E, Kind = InstructionKind.Ld, Cycles = 8, Mnemonic = "LD A,d8", Mode = AddressingMode.Imm8 };
-            table[0x3D] = new Instruction { Opcode = 0x3D, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "DEC A", Mode = AddressingMode.None };
-            table[0x3B] = new Instruction { Opcode = 0x3B, Kind = InstructionKind.Misc, Cycles = 8, Mnemonic = "DEC SP", Mode = AddressingMode.None };
-            table[0xC3] = new Instruction { Opcode = 0xC3, Kind = InstructionKind.Jp, Cycles = 16, Mnemonic = "JP d16", Mode = AddressingMode.Imm16 };
+            SetTable(0x00, new Instruction { Opcode = 0x00, Kind = InstructionKind.Nop, Cycles = 4, Mnemonic = "NOP", Mode = AddressingMode.None });
+            SetTable(0x01, new Instruction { Opcode = 0x01, Kind = InstructionKind.Ld, Cycles = 12, Mnemonic = "LD BC,d16", Mode = AddressingMode.Imm16 });
+            SetTable(0x03, new Instruction { Opcode = 0x03, Kind = InstructionKind.Misc, Cycles = 8, Mnemonic = "INC BC", Mode = AddressingMode.None });
+            SetTable(0x04, new Instruction { Opcode = 0x04, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "INC B", Mode = AddressingMode.None });
+            SetTable(0x06, new Instruction { Opcode = 0x06, Kind = InstructionKind.Ld, Cycles = 8, Mnemonic = "LD B,d8", Mode = AddressingMode.Imm8 });
+            SetTable(0x05, new Instruction { Opcode = 0x05, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "DEC B", Mode = AddressingMode.None });
+            SetTable(0x0B, new Instruction { Opcode = 0x0B, Kind = InstructionKind.Misc, Cycles = 8, Mnemonic = "DEC BC", Mode = AddressingMode.None });
+            SetTable(0x0C, new Instruction { Opcode = 0x0C, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "INC C", Mode = AddressingMode.None });
+            SetTable(0x0E, new Instruction { Opcode = 0x0E, Kind = InstructionKind.Ld, Cycles = 8, Mnemonic = "LD C,d8", Mode = AddressingMode.Imm8 });
+            SetTable(0x0D, new Instruction { Opcode = 0x0D, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "DEC C", Mode = AddressingMode.None });
+            SetTable(0x11, new Instruction { Opcode = 0x11, Kind = InstructionKind.Ld, Cycles = 12, Mnemonic = "LD DE,d16", Mode = AddressingMode.Imm16 });
+            SetTable(0x13, new Instruction { Opcode = 0x13, Kind = InstructionKind.Misc, Cycles = 8, Mnemonic = "INC DE", Mode = AddressingMode.None });
+            SetTable(0x14, new Instruction { Opcode = 0x14, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "INC D", Mode = AddressingMode.None });
+            SetTable(0x16, new Instruction { Opcode = 0x16, Kind = InstructionKind.Ld, Cycles = 8, Mnemonic = "LD D,d8", Mode = AddressingMode.Imm8 });
+            SetTable(0x15, new Instruction { Opcode = 0x15, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "DEC D", Mode = AddressingMode.None });
+            SetTable(0x1B, new Instruction { Opcode = 0x1B, Kind = InstructionKind.Misc, Cycles = 8, Mnemonic = "DEC DE", Mode = AddressingMode.None });
+            SetTable(0x1C, new Instruction { Opcode = 0x1C, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "INC E", Mode = AddressingMode.None });
+            SetTable(0x1E, new Instruction { Opcode = 0x1E, Kind = InstructionKind.Ld, Cycles = 8, Mnemonic = "LD E,d8", Mode = AddressingMode.Imm8 });
+            SetTable(0x1D, new Instruction { Opcode = 0x1D, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "DEC E", Mode = AddressingMode.None });
+            SetTable(0x21, new Instruction { Opcode = 0x21, Kind = InstructionKind.Ld, Cycles = 12, Mnemonic = "LD HL,d16", Mode = AddressingMode.Imm16 });
+            SetTable(0x23, new Instruction { Opcode = 0x23, Kind = InstructionKind.Misc, Cycles = 8, Mnemonic = "INC HL", Mode = AddressingMode.None });
+            SetTable(0x24, new Instruction { Opcode = 0x24, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "INC H", Mode = AddressingMode.None });
+            SetTable(0x26, new Instruction { Opcode = 0x26, Kind = InstructionKind.Ld, Cycles = 8, Mnemonic = "LD H,d8", Mode = AddressingMode.Imm8 });
+            SetTable(0x25, new Instruction { Opcode = 0x25, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "DEC H", Mode = AddressingMode.None });
+            SetTable(0x2B, new Instruction { Opcode = 0x2B, Kind = InstructionKind.Misc, Cycles = 8, Mnemonic = "DEC HL", Mode = AddressingMode.None });
+            SetTable(0x2C, new Instruction { Opcode = 0x2C, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "INC L", Mode = AddressingMode.None });
+            SetTable(0x2E, new Instruction { Opcode = 0x2E, Kind = InstructionKind.Ld, Cycles = 8, Mnemonic = "LD L,d8", Mode = AddressingMode.Imm8 });
+            SetTable(0x2D, new Instruction { Opcode = 0x2D, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "DEC L", Mode = AddressingMode.None });
+            SetTable(0x31, new Instruction { Opcode = 0x31, Kind = InstructionKind.Ld, Cycles = 12, Mnemonic = "LD SP,d16", Mode = AddressingMode.Imm16 });
+            SetTable(0x33, new Instruction { Opcode = 0x33, Kind = InstructionKind.Misc, Cycles = 8, Mnemonic = "INC SP", Mode = AddressingMode.None });
+            SetTable(0x3C, new Instruction { Opcode = 0x3C, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "INC A", Mode = AddressingMode.None });
+            SetTable(0x3E, new Instruction { Opcode = 0x3E, Kind = InstructionKind.Ld, Cycles = 8, Mnemonic = "LD A,d8", Mode = AddressingMode.Imm8 });
+            SetTable(0x3D, new Instruction { Opcode = 0x3D, Kind = InstructionKind.Misc, Cycles = 4, Mnemonic = "DEC A", Mode = AddressingMode.None });
+            SetTable(0x3B, new Instruction { Opcode = 0x3B, Kind = InstructionKind.Misc, Cycles = 8, Mnemonic = "DEC SP", Mode = AddressingMode.None });
+            SetTable(0xC3, new Instruction { Opcode = 0xC3, Kind = InstructionKind.Jp, Cycles = 16, Mnemonic = "JP d16", Mode = AddressingMode.Imm16 });
+        }
+
+        private void SetTable(byte opcode, Instruction instr)
+        {
+            table[opcode] = instr;
+            tableSet[opcode] = true;
         }
     }
 
