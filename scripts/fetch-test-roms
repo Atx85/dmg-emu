@@ -1,0 +1,62 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+ROM_DIR="$ROOT_DIR/gb-test-roms"
+
+GB_TEST_REPO="https://github.com/retrio/gb-test-roms.git"
+ACID2_URL="https://github.com/mattcurrie/dmg-acid2/releases/download/v1.0/dmg-acid2.gb"
+ACID2_SHA256="464e14b7d42e7feea0b7ede42be7071dc88913f75b9ffa444299424b63d1dff1"
+
+download_file() {
+  local url="$1"
+  local out="$2"
+
+  if command -v curl >/dev/null 2>&1; then
+    curl -fL "$url" -o "$out"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -O "$out" "$url"
+  else
+    echo "error: curl or wget is required to download test ROMs" >&2
+    exit 1
+  fi
+}
+
+verify_sha256() {
+  local file="$1"
+  local expected="$2"
+  local actual
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual="$(sha256sum "$file" | awk '{print tolower($1)}')"
+  elif command -v shasum >/dev/null 2>&1; then
+    actual="$(shasum -a 256 "$file" | awk '{print tolower($1)}')"
+  else
+    echo "warning: sha256 tool not available; skipping checksum verification for $file"
+    return 0
+  fi
+
+  if [[ "$actual" != "$expected" ]]; then
+    echo "error: checksum mismatch for $file" >&2
+    echo "expected: $expected" >&2
+    echo "actual:   $actual" >&2
+    exit 1
+  fi
+}
+
+echo "fetching gb-test-roms into $ROM_DIR"
+if [[ -d "$ROM_DIR/.git" ]]; then
+  git -C "$ROM_DIR" fetch --depth 1 origin
+  git -C "$ROM_DIR" reset --hard origin/master
+else
+  rm -rf "$ROM_DIR"
+  git clone --depth 1 "$GB_TEST_REPO" "$ROM_DIR"
+fi
+
+ACID2_OUT="$ROM_DIR/dmg-acid2.gb"
+echo "downloading dmg-acid2 ROM"
+download_file "$ACID2_URL" "$ACID2_OUT"
+verify_sha256 "$ACID2_OUT" "$ACID2_SHA256"
+
+echo "test ROM setup complete"

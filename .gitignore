@@ -2,6 +2,7 @@
 /bin/
 /obj/
 program.exe
+*.exe
 *.dll
 *.config
 
@@ -22,3 +23,4 @@ redundant/
 # ROM files (copyrighted material)
 *.gb
 roms/
+gb-test-roms/

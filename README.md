@@ -35,10 +35,22 @@ CPU test suite (unit + ROM smoke gate):
 ./scripts/test-cpu
 ```
 
+If test ROMs are missing, fetch them with:
+
+```sh
+./scripts/fetch-test-roms
+```
+
 On PowerShell:
 
 ```powershell
 ./scripts/test-cpu.ps1
+```
+
+PowerShell ROM setup:
+
+```powershell
+./scripts/fetch-test-roms.ps1
 ```
 
 CPU coverage checklist/strategy is documented in `docs/CPU-COVERAGE.md`.
